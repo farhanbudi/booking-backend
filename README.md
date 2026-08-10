@@ -2,7 +2,7 @@
 
 REST API untuk sistem pemesanan ruangan/resource dengan fokus pada penanganan **race condition** dan pencegahan **double-booking**.
 
-Frontend: [`../booking-frontend`](../booking-frontend)
+Frontend: [`booking-frontend`](https://github.com/farhanbudi/booking-frontend)
 
 ---
 
