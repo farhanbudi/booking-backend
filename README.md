@@ -148,6 +148,43 @@ WHERE (status <> 'cancelled');
 
 ---
 
+## Testing
+
+Automated tests menggunakan test runner bawaan Bun (`bun:test`) — tidak ada dependency
+tambahan. Test berjalan terhadap **database test terpisah**, bukan database development.
+
+### Prasyarat
+
+- PostgreSQL berjalan secara lokal.
+- Database test `booking_test` tersedia (dibuat otomatis oleh helper saat `bun run test`).
+
+### Konfigurasi
+
+Test memakai file env khusus `.env.test` (dimuat otomatis oleh `bun test` dan dieksplisitkan
+oleh `tests/setup.ts`), dengan `DATABASE_URL` mengarah ke database test `booking_test`.
+Database development yang ada di `.env` tidak tersentuh.
+
+### Menjalankan test
+
+```bash
+bun run test          # jalankan semua test sekali
+bun run test:watch    # mode watch
+```
+
+Yang diuji:
+
+| Tingkat | Cakupan |
+|---|---|
+| Unit (service) | Auth, resource, booking (termasuk validasi startTime/endTime, slot terisi, cancel ownership) |
+| API (integration) | Seluruh endpoint, auth guard, role guard admin, validasi input |
+| Concurrency | Membuktikan dua booking overlap bersamaan hanya satu yang berhasil (race condition / double-booking) |
+
+> Catatan: test concurrency membutuhkan exclusion constraint `no_overlapping_bookings` ada di
+> database test — helper `tests/helpers/test-db.ts` memastikan constraint tersebut terpasang
+> (idempoten) setiap kali test dijalankan.
+
+---
+
 ## Scripts
 
 | Command | Keterangan |
