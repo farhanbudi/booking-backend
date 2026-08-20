@@ -43,9 +43,11 @@ export function buildApp() {
   return app;
 }
 
+export type TestApp = ReturnType<typeof buildApp>;
+
 // Helper kecil: eksekusi request JSON terhadap app dan parse respons.
 export async function requestJson(
-  app: Elysia,
+  app: TestApp,
   path: string,
   init: { method?: string; token?: string; body?: unknown } = {}
 ) {
