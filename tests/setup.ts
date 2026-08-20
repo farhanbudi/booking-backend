@@ -43,6 +43,19 @@ function loadDotEnvFile(path: string) {
 
 loadDotEnvFile(TEST_ENV_FILE);
 
+// Bun tidak menimpa variabel yang sudah ada di environment nyata (shell/IDE/CI)
+// dengan nilai dari `.env`/`.env.test` (aturan first-wins). Karena itu preload
+// (dipicu CLI `--preload` di script `test` DAN `[test].preload` di bunfig.toml)
+// memuat `.env.test` secara eksplisit supaya test selalu memakai database test.
+// Guard di bawah memastikan test tidak pernah diam-diam menimpa database dev.
+
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL tidak ditemukan di file .env.test");
+}
+
+const testDbName = new URL(process.env.DATABASE_URL).pathname.slice(1);
+if (!/test/i.test(testDbName)) {
+  throw new Error(
+    `DATABASE_URL di .env.test harus mengarah ke database test, tetapi ditemukan database "${testDbName}". Periksa file .env.test.`
+  );
 }

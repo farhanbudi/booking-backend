@@ -31,7 +31,7 @@ This `no_overlapping_bookings` constraint is the database-level layer of double-
 - `.env` is gitignored; copy `.env.example` (`DATABASE_URL`, `JWT_SECRET`, `PORT`).
 - Bun auto-loads `.env` — no dotenv package or import exists.
 - `src/db/client.ts` throws at import time if `DATABASE_URL` is unset; `auth.middleware.ts` reads `JWT_SECRET` at app build time (set it before building the app in tests).
-- Tests use a dedicated env file `.env.test` (loaded automatically by `bun test` via `NODE_ENV=test`, and re-loaded explicitly by `tests/setup.ts`), pointing to a dedicated test DB (default `booking_test`), not the dev DB.
+- Tests use a dedicated env file `.env.test` (loaded automatically by `bun test` via `NODE_ENV=test`, and re-loaded explicitly by `tests/setup.ts`), pointing to a dedicated test DB (default `booking_test`), not the dev DB. `tests/setup.ts` is wired as preload both via CLI `--preload` and via `bunfig.toml` `[test] preload`, and guards that the effective `DATABASE_URL` points to a test DB (throws otherwise) — Bun does not override real environment variables with `.env` values, so the preload is what guarantees tests never touch the dev DB.
 
 ## Architecture
 
