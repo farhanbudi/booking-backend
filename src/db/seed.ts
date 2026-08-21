@@ -1,11 +1,12 @@
-// Jalankan dengan: bun run db:seed
-// Mengisi beberapa resource contoh supaya frontend langsung bisa dicoba
-// tanpa perlu insert manual lewat endpoint admin dulu.
+// Data awal contoh. Dipakai lewat `bun run db:seed` (database development) dan
+// otomatis oleh `bun run test:server` (database test untuk e2e). Catatan: seed
+// tidak idempoten untuk resource & akun admin yang sama, jadi pastikan database
+// dalam keadaan kosong (misal setelah reset) sebelum memanggilnya.
 
 import { db, client } from "./client";
 import { resources, users } from "./schema";
 
-async function seed() {
+export async function seedDatabase(): Promise<void> {
   console.log("🌱 Seeding data...");
 
   // --- Resources contoh ---
@@ -37,7 +38,7 @@ async function seed() {
     console.log(`  ✓ Resource ditambahkan: ${r.name}`);
   }
 
-  // --- Admin user contoh (opsional, memudahkan testing endpoint admin) ---
+  // --- Admin user contoh (memudahkan testing endpoint admin) ---
   const adminEmail = "admin@example.com";
   const adminPassword = "admin12345";
 
@@ -51,14 +52,19 @@ async function seed() {
 
   console.log(`  ✓ Admin user dibuat: ${adminEmail} / ${adminPassword}`);
   console.log("🌱 Seeding selesai.");
-
-  await client.end();
 }
 
-seed().catch((err) => {
-  console.error("❌ Seeding gagal:", err.message);
-  console.error(
-    "   (Kalau errornya 'duplicate key', kemungkinan data sudah pernah di-seed sebelumnya.)"
-  );
-  process.exit(1);
-});
+// Saat dijalankan langsung (`bun run db:seed`), tutup koneksi setelah selesai.
+// Ketika di-import (misal oleh test:server), koneksi dibiarkan terbuka supaya
+// server tetap bisa memakai database yang sama.
+if (import.meta.main) {
+  seedDatabase()
+    .then(() => client.end())
+    .catch((err) => {
+      console.error("❌ Seeding gagal:", err.message);
+      console.error(
+        "   (Kalau errornya 'duplicate key', kemungkinan data sudah pernah di-seed sebelumnya.)"
+      );
+      process.exit(1);
+    });
+}

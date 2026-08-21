@@ -171,6 +171,24 @@ bun run test          # jalankan semua test sekali
 bun run test:watch    # mode watch
 ```
 
+### Server untuk test e2e (frontend)
+
+Untuk menguji frontend secara end-to-end, backend perlu berjalan dengan konfigurasi
+test (`PORT=3001`, `DATABASE_URL` → `booking_test`). Jalankan:
+
+```bash
+bun run test:server
+```
+
+Script ini:
+
+1. Memuat `.env.test` (bukan `.env`) dan memastikan `DATABASE_URL` mengarah ke database test.
+2. Menyiapkan database test: membuat database bila belum ada, menjalankan migrasi, dan memasang exclusion constraint `no_overlapping_bookings` (idempoten).
+3. Me-reset seluruh tabel lalu mengisi data awal (4 resource + akun admin `admin@example.com` / `admin12345`) supaya state e2e selalu deterministik di setiap start.
+4. Menjalankan server di **`http://localhost:3001`**.
+
+> Server e2e ini tidak menyentuh database development yang ada di `.env`.
+
 Yang diuji:
 
 | Tingkat | Cakupan |
@@ -194,4 +212,7 @@ Yang diuji:
 | `bun run db:generate` | Generate file migrasi dari schema |
 | `bun run db:migrate` | Apply semua migrasi ke database |
 | `bun run db:seed` | Isi data awal |
+| `bun run test` | Jalankan semua automated test |
+| `bun run test:watch` | Jalankan test dengan mode watch |
+| `bun run test:server` | Jalankan server khusus e2e frontend (konfigurasi dari `.env.test`) |
 | `bun run db:studio` | Buka Drizzle Studio |

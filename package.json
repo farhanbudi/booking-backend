@@ -11,7 +11,8 @@
     "db:seed": "bun run src/db/seed.ts",
     "db:studio": "drizzle-kit studio",
     "test": "bun test --timeout=30000 --preload ./tests/setup.ts --parallel=1",
-    "test:watch": "bun test --watch --timeout=30000 --preload ./tests/setup.ts --parallel=1"
+    "test:watch": "bun test --watch --timeout=30000 --preload ./tests/setup.ts --parallel=1",
+    "test:server": "bun run src/run-test-server.ts"
   },
   "dependencies": {
     "elysia": "^1.1.26",
