@@ -36,6 +36,13 @@ export class ConflictError extends AppError {
   }
 }
 
+export class TooManyRequestsError extends AppError {
+  constructor(message = "Terlalu banyak permintaan, coba lagi nanti.") {
+    super(message, 429);
+    this.name = "TooManyRequestsError";
+  }
+}
+
 // Kode error PostgreSQL untuk exclusion_violation (dipakai saat overlap booking terdeteksi
 // oleh database, sebagai lapisan pertahanan kedua setelah application-level check).
 export const PG_EXCLUSION_VIOLATION = "23P01";

@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
 import { authPlugin, requireAdmin } from "../middleware/auth.middleware";
+import { rateLimitHook } from "../middleware/rate-limit.middleware";
 import {
   getAvailability,
   createBooking,
@@ -10,6 +11,7 @@ import {
 
 export const bookingRoutes = new Elysia({ prefix: "/bookings" })
   .use(authPlugin)
+  .onBeforeHandle(rateLimitHook())
 
   .get(
     "/availability",
