@@ -15,6 +15,7 @@ Frontend: [`booking-frontend`](https://github.com/farhanbudi/booking-frontend)
 | Database | PostgreSQL |
 | ORM | [Drizzle ORM](https://orm.drizzle.team) |
 | Auth | JWT (`@elysiajs/jwt`) + Argon2id via `Bun.password` |
+| Background Job | [BullMQ](https://docs.bullmq.io) + Redis (email konfirmasi/pembatalan/reminder) |
 
 ---
 
@@ -24,6 +25,7 @@ Frontend: [`booking-frontend`](https://github.com/farhanbudi/booking-frontend)
 
 - [Bun](https://bun.sh) ≥ 1.0
 - PostgreSQL
+- Redis + SMTP (untuk fitur email background job; keduanya bisa dijalankan lewat Docker — lihat bagian [Email & Background Job](#email--background-job))
 
 ### Langkah Setup
 
@@ -45,11 +47,16 @@ psql $DATABASE_URL -f src/db/migrations/manual_0001_exclusion_constraint.sql
 # 5. Isi data awal (4 ruangan + 1 akun admin)
 bun run db:seed
 
-# 6. Jalankan server
+# 6. Jalankan Redis dan SMTP dummy untuk email (lihat bagian Email & Background Job)
+docker run -d --name booking-redis -p 6379:6379 redis:7
+docker run -d --name booking-mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit
+
+# 7. Jalankan server API dan worker email (dua proses terpisah)
 bun run dev
+bun run worker
 ```
 
-Server berjalan di **`http://localhost:3000`**.
+Server berjalan di **`http://localhost:3000`**, web UI Mailpit di **`http://localhost:8025`**.
 
 ### Data Awal (Hasil Seed)
 
@@ -79,13 +86,22 @@ src/
 │   ├── auth/              # Register, login, profile
 │   ├── resources/         # CRUD resource
 │   └── bookings/          # Pengecekan ketersediaan + pembuatan booking
+├── jobs/
+│   ├── queues.ts        # Definisi queue BullMQ (`booking-emails`)
+│   ├── producers.ts     # Enqueue/schedule/remove job email
+│   ├── processors.ts    # Processor: verifikasi status → render → kirim
+│   └── types.ts         # Nama job & tipe payload
+├── mailer/
+│   ├── mailer.ts        # Transport SMTP (nodemailer)
+│   └── templates.ts     # Template email plain-text (Bahasa Indonesia)
 ├── routes/
 │   ├── auth.routes.ts
 │   ├── resources.routes.ts
 │   └── bookings.routes.ts
 ├── utils/
 │   └── errors.ts          # Custom error classes
-└── index.ts               # Entry point
+├── index.ts               # Entry point API
+└── worker.ts              # Entry point worker email (proses terpisah)
 ```
 
 ---
@@ -126,6 +142,40 @@ WHERE (status <> 'cancelled');
 
 - Lapis 1 memberikan respons error yang informatif kepada pengguna secepat mungkin.
 - Lapis 2 menjamin integritas data pada level database, terlepas dari kondisi yang terjadi di application layer.
+
+---
+
+## Email & Background Job
+
+Email dikirim **asinkron** lewat background job [BullMQ](https://docs.bullmq.io) + Redis sehingga lambat/gagalnya SMTP tidak pernah memengaruhi respons API:
+
+| Email | Pemicu |
+|---|---|
+| Konfirmasi | Booking berhasil dibuat (`POST /bookings`) |
+| Pembatalan | Booking dibatalkan (`PATCH /bookings/:id/cancel`) |
+| Reminder | Delayed job yang dieksekusi 1 jam sebelum `startTime` booking |
+
+Reminder tidak dikirim bila booking sudah dibatalkan, dan tidak dijadwalkan untuk booking last-minute (mulai < 1 jam lagi). Job gagal dicoba ulang otomatis maksimal **3 percobaan** dengan exponential backoff. Sebelum mengirim, worker selalu memverifikasi ulang status booking di database.
+
+### Menjalankan Redis & Mailpit (development)
+
+```bash
+docker run -d --name booking-redis -p 6379:6379 redis:7
+docker run -d --name booking-mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit
+```
+
+- `booking-redis`: server queue (variabel `REDIS_URL`, default `redis://localhost:6379`).
+- `booking-mailpit`: SMTP dummy yang menangkap semua email; lihat hasil kiriman di web UI `http://localhost:8025`.
+
+Setelah itu jalankan worker bersama API (dua proses terpisah):
+
+```bash
+bun run dev     # API (producer job)
+bun run worker  # worker email (consumer)
+```
+
+> Tanpa worker berjalan, email menumpuk di queue dan tidak terkirim — API tetap berjalan normal.
+> Untuk produksi: gunakan penyedia SMTP (mis. Amazon SES, Resend SMTP) karena email dari localhost rawan diblokir, serta aktifkan persistensi Redis (AOF/RDB) agar delayed job reminder tidak hilang saat restart.
 
 ---
 
@@ -209,6 +259,7 @@ Yang diuji:
 |---|---|
 | `bun run dev` | Jalankan development server dengan hot-reload |
 | `bun run start` | Jalankan server production |
+| `bun run worker` | Jalankan worker email BullMQ (proses terpisah dari API) |
 | `bun run db:generate` | Generate file migrasi dari schema |
 | `bun run db:migrate` | Apply semua migrasi ke database |
 | `bun run db:seed` | Isi data awal |

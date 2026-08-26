@@ -2,6 +2,12 @@ import { and, eq, gte, lte, ne, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { bookings } from "../../db/schema";
 import {
+  enqueueCancellation,
+  enqueueConfirmation,
+  removeReminder,
+  scheduleReminder,
+} from "../../jobs/producers";
+import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
@@ -50,7 +56,9 @@ export async function createBooking(input: {
   //   Exclusion constraint `no_overlapping_bookings` (lihat db/migrations) akan menolak
   //   INSERT yang overlap meskipun lapis 1 entah kenapa terlewat (misal karena bug,
   //   atau ada proses lain yang insert langsung ke DB tanpa lewat service ini).
-  return db.transaction(async (tx) => {
+  // Email konfirmasi + reminder dikirim di background (fire-and-forget) SETELAH
+  // transaksi DB sukses. Kegagalan antrean tidak boleh menggagalkan request.
+  const created = await db.transaction(async (tx) => {
     const overlapping = await tx.execute(sql`
       SELECT id FROM bookings
       WHERE resource_id = ${input.resourceId}
@@ -89,6 +97,18 @@ export async function createBooking(input: {
       throw err;
     }
   });
+
+  try {
+    await enqueueConfirmation(created.id);
+    await scheduleReminder(created.id, created.startTime);
+  } catch (err) {
+    console.warn(
+      `[bookings] gagal mengantre email konfirmasi/reminder untuk booking ${created.id}:`,
+      err
+    );
+  }
+
+  return created;
 }
 
 export async function listUserBookings(userId: string) {
@@ -122,6 +142,16 @@ export async function cancelBooking(bookingId: string, userId: string, role: str
     .set({ status: "cancelled" })
     .where(eq(bookings.id, bookingId))
     .returning();
+
+  try {
+    await enqueueCancellation(updated.id);
+    await removeReminder(updated.id);
+  } catch (err) {
+    console.warn(
+      `[bookings] gagal mengantre email pembatalan/penghapusan reminder untuk booking ${updated.id}:`,
+      err
+    );
+  }
 
   return updated;
 }

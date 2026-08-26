@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
+    "worker": "bun run src/worker.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run src/db/migrate.ts",
     "db:seed": "bun run src/db/seed.ts",
@@ -15,15 +16,20 @@
     "test:server": "bun run src/run-test-server.ts"
   },
   "dependencies": {
-    "elysia": "^1.1.26",
+    "@elysiajs/bearer": "^1.1.2",
     "@elysiajs/cors": "^1.1.1",
     "@elysiajs/jwt": "^1.1.1",
-    "@elysiajs/bearer": "^1.1.2",
+    "bullmq": "6.2.0",
     "drizzle-orm": "^0.36.4",
+    "elysia": "^1.1.26",
+    "ioredis": "6.0.0",
+    "nodemailer": "9.0.5",
     "postgres": "^3.4.5"
   },
   "devDependencies": {
+    "@types/nodemailer": "8.0.1",
+    "bun-types": "latest",
     "drizzle-kit": "^0.28.1",
-    "bun-types": "latest"
+    "typescript": "5.9.2"
   }
 }
