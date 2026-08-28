@@ -30,7 +30,7 @@ describe("bookings.service", () => {
       resourceId: resource.id,
       startTime: new Date("2026-08-11T11:00:00.000Z"),
       endTime: new Date("2026-08-11T12:00:00.000Z"),
-    });
+    }) as any;
     await cancelBooking(dibatalkan.id, user.id, "user");
 
     const availability = await getAvailability(resource.id, "2026-08-11");
@@ -88,7 +88,7 @@ describe("bookings.service", () => {
       resourceId: resource.id,
       startTime: new Date("2026-08-13T09:00:00.000Z"),
       endTime: new Date("2026-08-13T10:00:00.000Z"),
-    });
+    }) as any;
 
     expect(booking.status).toBe("confirmed");
     expect(booking.resourceId).toBe(resource.id);
@@ -113,7 +113,7 @@ describe("bookings.service", () => {
       resourceId: resource.id,
       startTime: new Date("2026-08-14T09:00:00.000Z"),
       endTime: new Date("2026-08-14T10:00:00.000Z"),
-    });
+    }) as any;
 
     try {
       await cancelBooking(booking.id, orangLain.id, "user");

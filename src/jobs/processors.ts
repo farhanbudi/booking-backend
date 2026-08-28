@@ -10,9 +10,11 @@ import {
   type BookingTemplateData,
   type EmailContent,
 } from "../mailer/templates";
+import { expireStalePaymentBooking } from "../modules/payments/payments.service";
 import {
   JOB_NAME_CANCELLATION,
   JOB_NAME_CONFIRMATION,
+  JOB_NAME_EXPIRE_PAYMENT,
   JOB_NAME_REMINDER,
   type BookingEmailData,
 } from "./types";
@@ -106,7 +108,13 @@ export async function processBookingEmailData(
 }
 
 export async function bookingEmailProcessor(
-  job: Job<BookingEmailData>,
+  job: Job<BookingEmailData>
 ): Promise<void> {
+  // Queue ini juga membawa job non-email `expire-payment` (design D5):
+  // cancel booking pending yang lewat TTL tanpa mengirim email apa pun.
+  if (job.name === JOB_NAME_EXPIRE_PAYMENT) {
+    await expireStalePaymentBooking(job.data.bookingId);
+    return;
+  }
   await processBookingEmailData(job.name, job.data);
 }

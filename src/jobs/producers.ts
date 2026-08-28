@@ -3,7 +3,9 @@ import { reminderDelayMs } from "./reminder-delay";
 import {
   JOB_NAME_CANCELLATION,
   JOB_NAME_CONFIRMATION,
+  JOB_NAME_EXPIRE_PAYMENT,
   JOB_NAME_REMINDER,
+  expireJobId,
   reminderJobId,
   type BookingEmailData,
 } from "./types";
@@ -43,4 +45,22 @@ export async function scheduleReminder(
 
 export async function removeReminder(bookingId: string): Promise<void> {
   await getBookingEmailQueue().remove(reminderJobId(bookingId));
+}
+
+// Job delayed auto-expiry untuk booking pending yang tidak dibayar (design D5).
+// attempts:1 karena job telat pun aman — gerbang transisi kondisional yang memutuskan.
+export async function scheduleExpiry(
+  bookingId: string,
+  ttlMs: number
+): Promise<void> {
+  const data: BookingEmailData = { bookingId };
+  await getBookingEmailQueue().add(JOB_NAME_EXPIRE_PAYMENT, data, {
+    delay: ttlMs,
+    jobId: expireJobId(bookingId),
+    attempts: 1,
+  });
+}
+
+export async function removeExpiry(bookingId: string): Promise<void> {
+  await getBookingEmailQueue().remove(expireJobId(bookingId));
 }

@@ -1,10 +1,6 @@
-# booking-email-jobs Specification
+# booking-email-jobs (delta)
 
-## Purpose
-
-Mengirim email konfirmasi, pembatalan, dan reminder booking secara asinkron melalui background job berbasis queue, sehingga pengiriman email tidak pernah memperlambat atau menggagalkan respons API dan tetap terkirim meski sempat gagal.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Confirmation email on booking creation
 
@@ -29,15 +25,6 @@ For a booking created on an unpriced (free) resource, the system SHALL enqueue a
 
 - **WHEN** the confirmation email cannot be queued (e.g., queue infrastructure unavailable) at booking creation or at payment acceptance
 - **THEN** the booking creation response remains HTTP 201 and the payment transition still completes, with the queuing failure recorded in server logs only
-
-### Requirement: Cancellation email on booking cancellation
-
-The system SHALL enqueue a cancellation email whenever a booking is successfully cancelled, addressed to the booking owner's registered email address, containing at least the resource name and the cancelled start and end time.
-
-#### Scenario: Cancellation email is enqueued
-
-- **WHEN** a booking cancellation succeeds
-- **THEN** a cancellation email job is queued for delivery to the booking owner's email with the resource name and the cancelled time slot included
 
 ### Requirement: Reminder email one hour before start
 
@@ -67,26 +54,3 @@ The system SHALL schedule a reminder email approximately one hour before a booki
 
 - **WHEN** a booking on an unpriced resource is created with a start time less than one hour in the future
 - **THEN** no reminder is scheduled or sent for that booking
-
-### Requirement: Asynchronous out-of-band delivery
-
-Email delivery MUST happen outside the HTTP request lifecycle: booking create and cancel endpoints MUST NOT wait for email transmission, and email delivery problems MUST NOT change those endpoints' success responses.
-
-#### Scenario: Unreachable mail transport does not affect the API
-
-- **WHEN** the mail transport is unreachable or slow while a booking is being created or cancelled
-- **THEN** the corresponding endpoint still completes normally with its usual success response, without waiting for any email outcome
-
-### Requirement: Automatic retry with bounded attempts
-
-A failed email delivery SHALL be retried automatically with increasing delay between attempts, up to a maximum of 3 total attempts; after the final failure the job SHALL be discarded and its failure logged, with no further user-visible effect.
-
-#### Scenario: Transient failure is retried
-
-- **WHEN** an email delivery attempt fails transiently (e.g., temporary SMTP error)
-- **THEN** the same email is retried automatically until it succeeds or the 3-attempt maximum is reached
-
-#### Scenario: Final failure is contained
-
-- **WHEN** all 3 delivery attempts for an email have failed
-- **THEN** the failure is logged and the job is discarded, and no API error surfaces to any client

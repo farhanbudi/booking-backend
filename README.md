@@ -160,8 +160,8 @@ Reminder tidak dikirim bila booking sudah dibatalkan, dan tidak dijadwalkan untu
 ### Menjalankan Redis & Mailpit (development)
 
 ```bash
-docker run -d --name booking-redis -p 6379:6379 redis:7
-docker run -d --name booking-mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit
+docker run -d --name redis --restart unless-stopped -p 6379:6379 redis:7
+docker run -d --name booking-mailpit --restart unless-stopped -p 1025:1025 -p 8025:8025 axllent/mailpit
 ```
 
 - `booking-redis`: server queue (variabel `REDIS_URL`, default `redis://localhost:6379`).
@@ -179,6 +179,48 @@ bun run worker  # worker email (consumer)
 
 ---
 
+## Pembayaran (Simulasi Stripe Test Mode)
+
+Resource dapat diberi harga per jam lewat kolom `pricePerHour` (admin, `POST/PATCH /resources`). Alur booking menyesuaikan:
+
+| Resource | Perilaku |
+|---|---|
+| `pricePerHour` kosong / 0 | Gratis — langsung `confirmed`, email konfirmasi + reminder dijadwalkan saat create (perilaku lama) |
+| `pricePerHour` > 0 | Berbayar — booking masuk status `pending`, API mengembalikan `{ booking, payment: { checkoutUrl, expiresAt } }`; slot **tetap ditahan** selama pending |
+
+Booking berbayar menjadi `confirmed` hanya setelah webhook `checkout.session.completed` dari Stripe. Jika tidak dibayar dalam `PAYMENT_EXPIRY_MINUTES` (default 15), delayed job `expire-payment` membatalkannya otomatis dan slot kembali bebas — **tanpa** email apa pun. Email konfirmasi + reminder baru dikirim tepat setelah pembayaran sukses. Pemilik booking pending bisa meminta URL checkout segar kapan saja via `GET /bookings/:id/checkout-url` (403 bila bukan pemilik, 409 bila bukan pending).
+
+Konfirmasi pembayaran bersifat idempoten: webhook duplikat, event untuk booking yang sudah dibatalkan, atau job expiry yang datang terlambat semuanya jadi no-op aman lewat satu gerbang transisi kondisional (`UPDATE ... WHERE status='pending'`).
+
+### Env pembayaran
+
+```env
+STRIPE_SECRET_KEY=sk_test_...        # wajib untuk alur berbayar
+STRIPE_WEBHOOK_SECRET=whsec_...      # tanpa ini endpoint webhook merespons 503
+PAYMENT_CURRENCY=idr                 # amount dikirim dalam satuan terkecil (×100)
+PAYMENT_EXPIRY_MINUTES=15            # TTL pending sebelum auto-cancel
+PAYMENT_SUCCESS_URL=http://localhost:5173/payments/success
+PAYMENT_CANCEL_URL=http://localhost:5173/payments/cancel
+```
+
+### Menguji webhook secara lokal
+
+Webhook butuh URL publik; gunakan Stripe CLI untuk meneruskan event ke localhost:
+
+```bash
+stripe login
+stripe listen --forward-to localhost:3000/payments/webhook
+# salin whsec_... yang tercetak ke STRIPE_WEBHOOK_SECRET di .env, lalu restart API
+```
+
+Kartu tes di halaman Checkout: `4242 4242 4242 4242` (tanggal/CSV bebas). Tanpa CLI, booking tetap bisa dibuat dan URL checkout dibuka, tapi tanpa event webhook booking akan hang di `pending` sampai dibatalkan otomatis oleh job expiry — itu fallback yang disengaja.
+
+Kartu tes untuk gagal checkout: `4000 0000 0000 0002`
+
+> **Pitfall jumlah minimum (akun Stripe settlement = MYR):** akun Stripe yang dipakai memperlakukan IDR sebagai mata uang 2-desimal, sehingga `unit_amount` harus dikirim dalam satuan terkecil (Rp50.000 → `5000000`). Mengirim langsung (`50000`) gagal dengan `amount_too_small` karena Stripe membacanya sebagai Rp500,00 (di bawah minimum `RM2,00`). Logika pengalian ×100 ada di `src/modules/payments/pricing.ts`. Jika mengganti ke akun dengan settlement IDR, kembalikan perlakuan zero-decimal agar tidak terjadi overcharge 100×.
+
+---
+
 ## Daftar Endpoint
 
 | Method | Path | Auth | Keterangan |
@@ -188,13 +230,15 @@ bun run worker  # worker email (consumer)
 | `GET` | `/auth/me` | User | Profil pengguna yang sedang login |
 | `GET` | `/resources` | User | Daftar resource (opsional: `?minCapacity=N`) |
 | `POST` | `/resources` | Admin | Tambah resource baru |
-| `PATCH` | `/resources/:id` | Admin | Perbarui data resource |
+| `PATCH` | `/resources/:id` | Admin | Perbarui data resource (`pricePerHour` opsional) |
 | `DELETE` | `/resources/:id` | Admin | Hapus resource |
 | `GET` | `/bookings/availability` | User | Cek slot yang sudah terisi (`?resourceId=&date=YYYY-MM-DD`) |
-| `POST` | `/bookings` | User | Buat booking baru |
+| `POST` | `/bookings` | User | Buat booking baru; resource berbayar → respons berisi `payment.checkoutUrl` |
+| `GET` | `/bookings/:id/checkout-url` | User (pemilik) | URL checkout segar untuk booking pending |
 | `GET` | `/bookings` | User | Riwayat booking milik pengguna yang login |
 | `GET` | `/bookings/admin/all` | Admin | Seluruh booking dari semua pengguna |
 | `PATCH` | `/bookings/:id/cancel` | User/Admin | Batalkan booking |
+| `POST` | `/payments/webhook` | — (signature Stripe) | Webhook `checkout.session.completed/expired` |
 
 ---
 

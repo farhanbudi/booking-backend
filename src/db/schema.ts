@@ -5,6 +5,7 @@ import {
   timestamp,
   boolean,
   integer,
+  bigint,
   pgEnum,
 } from "drizzle-orm/pg-core";
 
@@ -12,7 +13,11 @@ export const roleEnum = pgEnum("role", ["user", "admin"]);
 export const bookingStatusEnum = pgEnum("booking_status", [
   "pending",
   "confirmed",
-  "cancelled",
+  "cancelled"]);
+export const paymentStatusEnum = pgEnum("payment_status", [
+  "open",
+  "completed",
+  "expired",
 ]);
 
 export const users = pgTable("users", {
@@ -31,6 +36,9 @@ export const resources = pgTable("resources", {
   name: varchar("name", { length: 255 }).notNull(),
   capacity: integer("capacity").notNull().default(1),
   location: varchar("location", { length: 255 }),
+  // Harga per jam. NULL atau 0 = resource gratis (alur booking langsung confirmed).
+  // > 0 = booking berbayar (alur pending → bayar via Stripe → confirmed).
+  pricePerHour: integer("price_per_hour"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
@@ -53,9 +61,29 @@ export const bookings = pgTable("bookings", {
     .defaultNow(),
 });
 
+// Satu baris per percobaan Checkout Session (retry membuat sesi baru, lihat design D1).
+// bookings.status tetap sumber kebenaran lifecycle; tabel ini menyimpan riwayat attempt.
+export const payments = pgTable("payments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  bookingId: uuid("booking_id")
+    .notNull()
+    .references(() => bookings.id, { onDelete: "cascade" }),
+  stripeSessionId: varchar("stripe_session_id", { length: 255 })
+    .notNull()
+    .unique(),
+  amount: bigint("amount", { mode: "number" }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull(),
+  status: paymentStatusEnum("status").notNull().default("open"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Resource = typeof resources.$inferSelect;
 export type NewResource = typeof resources.$inferInsert;
 export type Booking = typeof bookings.$inferSelect;
 export type NewBooking = typeof bookings.$inferInsert;
+export type Payment = typeof payments.$inferSelect;
+export type NewPayment = typeof payments.$inferInsert;

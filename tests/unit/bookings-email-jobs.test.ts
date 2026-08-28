@@ -8,6 +8,7 @@ const panggilan = {
   cancellation: [] as string[],
   reminderDijadwalkan: [] as Array<{ bookingId: string; startTime: Date }>,
   reminderDihapus: [] as string[],
+  expiryDihapus: [] as string[],
 };
 
 let producerGagal = false;
@@ -30,6 +31,12 @@ mock.module("../../src/jobs/producers", () => ({
     if (producerGagal) throw new Error("redis down");
     panggilan.reminderDihapus.push(bookingId);
   },
+  // Ekspor baru dipakai alur berbayar; resource di file ini gratis jadi tak terpanggil,
+  // tapi HARUS ada supaya link import bookings.service tidak gagal.
+  scheduleExpiry: async () => {},
+  removeExpiry: async (bookingId: string) => {
+    panggilan.expiryDihapus.push(bookingId);
+  },
 }));
 
 const { createBooking, cancelBooking } = await import(
@@ -51,7 +58,7 @@ describe("Integrasi email jobs pada bookings.service", () => {
       resourceId: resource.id,
       startTime,
       endTime: new Date("2026-08-20T10:00:00.000Z"),
-    });
+    }) as any;
 
     expect(panggilan.confirmation).toContain(booking.id);
     expect(panggilan.reminderDijadwalkan.length).toBe(1);
@@ -68,7 +75,7 @@ describe("Integrasi email jobs pada bookings.service", () => {
       resourceId: resource.id,
       startTime: new Date("2026-08-21T09:00:00.000Z"),
       endTime: new Date("2026-08-21T10:00:00.000Z"),
-    });
+    }) as any;
 
     panggilan.reminderDijadwalkan.length = 0;
 
@@ -91,7 +98,7 @@ describe("Integrasi email jobs pada bookings.service", () => {
         resourceId: resource.id,
         startTime: new Date("2026-08-22T09:00:00.000Z"),
         endTime: new Date("2026-08-22T10:00:00.000Z"),
-      });
+      }) as any;
       expect(booking.status).toBe("confirmed");
 
       const cancelled = await cancelBooking(booking.id, user.id, "user");

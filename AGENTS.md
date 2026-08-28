@@ -33,6 +33,11 @@ This `no_overlapping_bookings` constraint is the database-level layer of double-
 - `src/db/client.ts` throws at import time if `DATABASE_URL` is unset; `auth.middleware.ts` reads `JWT_SECRET` at app build time (set it before building the app in tests).
 - Tests use a dedicated env file `.env.test` (loaded automatically by `bun test` via `NODE_ENV=test`, and re-loaded explicitly by `tests/setup.ts`), pointing to a dedicated test DB (default `booking_test`), not the dev DB. `tests/setup.ts` is wired as preload both via CLI `--preload` and via `bunfig.toml` `[test] preload`, and guards that the effective `DATABASE_URL` points to a test DB (throws otherwise) — Bun does not override real environment variables with `.env` values, so the preload is what guarantees tests never touch the dev DB.
 
+## Testing pitfalls (Bun)
+
+- Do NOT use `await expect(promise).rejects.*` or `expect(promise).resolves.*` on service-level promises (anything that touches the DB / rejects after internal awaits). Under Bun 1.3.x these can hang forever: the per-test timeout fires while the promise never settles, cascading failures into later tests and stalling the whole `bun test` run. Assert manually with try/catch instead — see the `statusDari` helper in `tests/unit/bookings-payments.test.ts` and `tests/unit/payments-webhook-signature.test.ts`.
+- When adding new exports to `src/jobs/producers.ts` (or any module that other services import statically), update EVERY existing `mock.module(...)` of that specifier across `tests/unit/` — an incomplete mock namespace breaks module linking with `Export named 'x' not found`, even in unrelated test files (all files share one process under `--parallel=1`).
+
 ## Architecture
 
 - `src/index.ts` — Elysia app + global error handler (`AppError` → JSON status; TypeBox `VALIDATION` → 400).

@@ -47,6 +47,20 @@ export async function prepareDatabase(): Promise<void> {
   // Kalau database baru dibuat, migrate juga perlu menjalankan ekstensi.
   await db.execute(sql`CREATE EXTENSION IF NOT EXISTS btree_gist`);
 
+  // Guard eksplisit: kalau extension gagal dibuat (mis. postgresql-contrib
+  // tidak terinstall), beri error yang jelas alih-alih gagal saat ADD CONSTRAINT.
+  const ext = await db.execute<{ installed: boolean }>(sql`
+    SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'btree_gist') AS installed
+  `);
+  if (!ext[0]?.installed) {
+    throw new Error(
+      "Gagal mengaktifkan extension 'btree_gist' yang dibutuhkan constraint " +
+        "no_overlapping_bookings. Pastikan paket 'postgresql-contrib' terinstall " +
+        "pada server PostgreSQL (mis. `apt install postgresql-contrib` / `brew install " +
+        "postgresql` versi lengkap), lalu jalankan ulang."
+    );
+  }
+
   await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
 
   // Exclusion constraint manual (tidak ada di migrate Drizzle). PostgreSQL tidak

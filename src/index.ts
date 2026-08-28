@@ -3,6 +3,7 @@ import { cors } from "@elysiajs/cors";
 import { authRoutes } from "./routes/auth.routes";
 import { resourceRoutes } from "./routes/resources.routes";
 import { bookingRoutes } from "./routes/bookings.routes";
+import { paymentRoutes } from "./routes/payments.routes";
 import { AppError } from "./utils/errors";
 
 const app = new Elysia()
@@ -11,6 +12,7 @@ const app = new Elysia()
   // Global error handler: ubah AppError (dan turunannya) jadi response JSON yang konsisten.
   .onError(({ code, error, set }) => {
     if (error instanceof AppError) {
+      console.error("[error] AppError:", error.statusCode, error.message);
       set.status = error.statusCode;
       return { error: error.message };
     }
@@ -35,6 +37,7 @@ const app = new Elysia()
   .use(authRoutes)
   .use(resourceRoutes)
   .use(bookingRoutes)
+  .use(paymentRoutes)
 
   .listen(process.env.PORT ?? 3000);
 

@@ -8,6 +8,7 @@ import {
   listAllBookings,
   cancelBooking,
 } from "../modules/bookings/bookings.service";
+import { getFreshCheckoutUrl } from "../modules/payments/payments.service";
 
 export const bookingRoutes = new Elysia({ prefix: "/bookings" })
   .use(authPlugin)
@@ -62,4 +63,16 @@ export const bookingRoutes = new Elysia({ prefix: "/bookings" })
   .patch("/:id/cancel", async ({ params, getUser }) => {
     const user = await getUser();
     return cancelBooking(params.id, user.sub, user.role);
-  });
+  })
+
+  // Retry pembayaran: pemilik booking pending minta URL checkout segar.
+  .get(
+    "/:id/checkout-url",
+    async ({ params, getUser }) => {
+      const user = await getUser();
+      return getFreshCheckoutUrl(params.id, user.sub);
+    },
+    {
+      params: t.Object({ id: t.String({ format: "uuid" }) }),
+    }
+  );

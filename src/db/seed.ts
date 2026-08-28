@@ -15,21 +15,25 @@ export async function seedDatabase(): Promise<void> {
       name: "Meeting Room A",
       capacity: 4,
       location: "Lantai 2, Gedung Utama",
+      pricePerHour: 50000,
     },
     {
       name: "Meeting Room B",
       capacity: 8,
       location: "Lantai 2, Gedung Utama",
+      pricePerHour: 100000,
     },
     {
       name: "Ruang Rapat Eksekutif",
       capacity: 12,
       location: "Lantai 5, Gedung Utama",
+      pricePerHour: 200000,
     },
     {
       name: "Pod Diskusi Kecil",
       capacity: 2,
       location: "Lantai 1, Area Coworking",
+      pricePerHour: 0,
     },
   ];
 
