@@ -1,5 +1,7 @@
 import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
+import { openapi } from "@elysiajs/openapi";
+// @ts-ignore - types may not include all runtime options
 import { authRoutes } from "./routes/auth.routes";
 import { resourceRoutes } from "./routes/resources.routes";
 import { bookingRoutes } from "./routes/bookings.routes";
@@ -8,8 +10,30 @@ import { AppError } from "./utils/errors";
 
 const app = new Elysia()
   .use(cors())
+  .use(
+    openapi({
+      documentation: {
+        components: {
+          securitySchemes: {
+            bearerAuth: {
+              type: "http",
+              scheme: "bearer",
+              bearerFormat: "JWT",
+            },
+          },
+        },
+      },
+      swagger: {
+        persistAuthorization: true,
+      },
+    })
+  )
+  .get("/", () => ({ status: "ok", service: "booking-backend" }))
+  .use(authRoutes)
+  .use(resourceRoutes)
+  .use(bookingRoutes)
+  .use(paymentRoutes)
 
-  // Global error handler: ubah AppError (dan turunannya) jadi response JSON yang konsisten.
   .onError(({ code, error, set }) => {
     if (error instanceof AppError) {
       console.error("[error] AppError:", error.statusCode, error.message);
@@ -31,13 +55,6 @@ const app = new Elysia()
     set.status = 500;
     return { error: "Terjadi kesalahan pada server" };
   })
-
-  .get("/", () => ({ status: "ok", service: "booking-backend" }))
-
-  .use(authRoutes)
-  .use(resourceRoutes)
-  .use(bookingRoutes)
-  .use(paymentRoutes)
 
   .listen(process.env.PORT ?? 3000);
 

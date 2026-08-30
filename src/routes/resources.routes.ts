@@ -10,7 +10,6 @@ import {
 
 export const resourceRoutes = new Elysia({ prefix: "/resources" })
   .use(authPlugin)
-
   .get(
     "/",
     async ({ query }) => {

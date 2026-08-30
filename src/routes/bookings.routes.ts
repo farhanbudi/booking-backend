@@ -13,7 +13,6 @@ import { getFreshCheckoutUrl } from "../modules/payments/payments.service";
 export const bookingRoutes = new Elysia({ prefix: "/bookings" })
   .use(authPlugin)
   .onBeforeHandle(rateLimitHook())
-
   .get(
     "/availability",
     async ({ query }) => {
@@ -65,7 +64,6 @@ export const bookingRoutes = new Elysia({ prefix: "/bookings" })
     return cancelBooking(params.id, user.sub, user.role);
   })
 
-  // Retry pembayaran: pemilik booking pending minta URL checkout segar.
   .get(
     "/:id/checkout-url",
     async ({ params, getUser }) => {
