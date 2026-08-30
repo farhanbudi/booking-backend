@@ -1,10 +1,10 @@
 import { Elysia, t } from "elysia";
-import { authPlugin } from "../middleware/auth.middleware";
+import { authPlugin, requireAuth } from "../middleware/auth.middleware";
 import { registerUser, validateLogin, getUserById } from "../modules/auth/auth.service";
 
 export const authRoutes = new Elysia({ prefix: "/auth" })
   .use(authPlugin)
-
+  // public route (dont need token)
   .post(
     "/register",
     async ({ body, set }) => {
@@ -45,13 +45,25 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
     }
   )
 
-  .get("/me", async ({ getUser }) => {
-    const payload = await getUser();
-    const user = await getUserById(payload.sub);
+  // protected route (need token)
+  .use(requireAuth)
+  .get("/me", async ({ currentUser, set }) => {
+    const user = await getUserById(currentUser.sub);
+    if (!user) {
+      set.status = 404;
+      return { message: "User not found" };
+    }
+
     return {
       id: user.id,
       name: user.name,
       email: user.email,
       role: user.role,
     };
-  });
+  },
+  {
+    detail: {
+      security: [{ bearerAuth: [] }]
+    }
+  }
+);

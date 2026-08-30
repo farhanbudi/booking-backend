@@ -21,10 +21,17 @@ export const paymentRoutes = new Elysia()
   })
   .post(
     "/payments/webhook",
-    async ({ body, request }) => {
+    async ({ body, request, set }) => {
       const rawBody = body as string;
       const signature = request.headers.get("stripe-signature") ?? "";
-      const event = await defaultStripePort.constructWebhookEvent(rawBody, signature);
+
+      let event;
+      try {
+        event = await defaultStripePort.constructWebhookEvent(rawBody, signature);
+      } catch (err) {
+        set.status = 400;
+        return { error: "Invalid signature" };
+      }
 
       switch (event.type) {
         case "checkout.session.completed":

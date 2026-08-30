@@ -41,3 +41,10 @@ export function requireAdmin(user: JwtPayload) {
     throw new ForbiddenError("Hanya admin yang boleh mengakses resource ini");
   }
 }
+
+export const requireAuth = new Elysia({ name: "require-auth" })
+  .use(authPlugin)
+  .resolve({ as: "global" }, async ({ getUser }) => {
+    const payload = await getUser();
+    return { currentUser: payload };
+  });
