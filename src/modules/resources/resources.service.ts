@@ -32,6 +32,7 @@ export async function createResource(input: {
   name: string;
   capacity: number;
   location?: string;
+  pricePerHour?: number;
 }) {
   const [resource] = await db.insert(resources).values(input).returning();
   return resource;
@@ -39,7 +40,13 @@ export async function createResource(input: {
 
 export async function updateResource(
   id: string,
-  input: Partial<{ name: string; capacity: number; location: string; isActive: boolean }>
+  input: Partial<{
+    name: string;
+    capacity: number;
+    location: string;
+    isActive: boolean;
+    pricePerHour: number;
+  }>
 ) {
   await getResourceById(id); // memastikan resource ada, kalau tidak lempar 404
   const [updated] = await db

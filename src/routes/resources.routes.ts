@@ -40,6 +40,7 @@ export const resourceRoutes = new Elysia({ prefix: "/resources" })
             name: t.String({ minLength: 1 }),
             capacity: t.Integer({ minimum: 1 }),
             location: t.Optional(t.String()),
+            pricePerHour: t.Optional(t.Integer({ minimum: 0 })),
           }),
         }
       )
@@ -57,6 +58,7 @@ export const resourceRoutes = new Elysia({ prefix: "/resources" })
               capacity: t.Integer({ minimum: 1 }),
               location: t.String(),
               isActive: t.Boolean(),
+              pricePerHour: t.Integer({ minimum: 0 }),
             })
           ),
         }
