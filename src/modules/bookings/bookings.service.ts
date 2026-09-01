@@ -172,7 +172,24 @@ export async function createBooking(input: {
 export async function listUserBookings(userId: string) {
   return db.query.bookings.findMany({
     where: eq(bookings.userId, userId),
-    orderBy: (b, { desc }) => [desc(b.startTime)],
+    columns: {
+      id: true,
+      userId: true,
+      resourceId: true,
+      startTime: true,
+      endTime: true,
+      status: true,
+      createdAt: true,
+    },
+    with: {
+      user: {
+        columns: { name: true },
+      },
+      resource: {
+        columns: { name: true, location: true },
+      },
+    },
+    orderBy: (bookings, { desc }) => [desc(bookings.startTime)],
   });
 }
 
