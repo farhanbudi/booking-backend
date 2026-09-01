@@ -8,6 +8,7 @@ import {
   bigint,
   pgEnum,
 } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 
 export const roleEnum = pgEnum("role", ["user", "admin"]);
 export const bookingStatusEnum = pgEnum("booking_status", [
@@ -78,6 +79,33 @@ export const payments = pgTable("payments", {
     .notNull()
     .defaultNow(),
 });
+
+export const usersRelations = relations(users, ({ many }) => ({
+  bookings: many(bookings),
+}));
+
+export const resourcesRelations = relations(resources, ({ many }) => ({
+  bookings: many(bookings),
+}));
+
+export const bookingsRelations = relations(bookings, ({ one, many }) => ({
+  user: one(users, {
+    fields: [bookings.userId],
+    references: [users.id],
+  }),
+  resource: one(resources, {
+    fields: [bookings.resourceId],
+    references: [resources.id],
+  }),
+  payments: many(payments),
+}));
+
+export const paymentsRelations = relations(payments, ({ one }) => ({
+  booking: one(bookings, {
+    fields: [payments.bookingId],
+    references: [bookings.id],
+  }),
+}));
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

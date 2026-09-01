@@ -1,6 +1,6 @@
-import { and, eq, gte, lte, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lte, ne, sql } from "drizzle-orm";
 import { db } from "../../db/client";
-import { bookings, resources } from "../../db/schema";
+import { bookings, resources, users } from "../../db/schema";
 import {
   enqueueCancellation,
   enqueueConfirmation,
@@ -178,7 +178,24 @@ export async function listUserBookings(userId: string) {
 
 export async function listAllBookings() {
   return db.query.bookings.findMany({
-    orderBy: (b, { desc }) => [desc(b.startTime)],
+    columns: {
+      id: true,
+      userId: true,
+      resourceId: true,
+      startTime: true,
+      endTime: true,
+      status: true,
+      createdAt: true,
+    },
+    with: {
+      user: {
+        columns: { name: true },
+      },
+      resource: {
+        columns: { name: true, location: true },
+      },
+    },
+    orderBy: (bookings, { desc }) => [desc(bookings.startTime)],
   });
 }
 
