@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../../db/client";
 import { users } from "../../db/schema";
 import { AppError, ConflictError, UnauthorizedError } from "../../utils/errors";
+import { logger } from "../../utils/logger";
 
 export async function registerUser(input: {
   name: string;
@@ -37,11 +38,13 @@ export async function validateLogin(input: { email: string; password: string }) 
   });
 
   if (!user) {
+    logger.warn({ email: input.email }, "login gagal: email tidak ditemukan");
     throw new UnauthorizedError("Email atau password salah");
   }
 
   const isValid = await Bun.password.verify(input.password, user.passwordHash);
   if (!isValid) {
+    logger.warn({ email: input.email }, "login gagal: password salah");
     throw new UnauthorizedError("Email atau password salah");
   }
 

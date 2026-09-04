@@ -20,6 +20,7 @@ import {
   NotFoundError,
   PG_EXCLUSION_VIOLATION,
 } from "../../utils/errors";
+import { logger } from "../../utils/logger";
 
 // Ambil semua booking aktif (bukan cancelled) untuk resource tertentu pada rentang tanggal tertentu.
 // Dipakai frontend untuk menampilkan slot yang sudah terisi di kalender/slot picker.
@@ -89,6 +90,14 @@ export async function createBooking(input: {
     `);
 
     if (overlapping.length > 0) {
+      logger.warn(
+        {
+          resourceId: input.resourceId,
+          startTime: input.startTime,
+          endTime: input.endTime,
+        },
+        "double booking ditolak oleh cek FOR UPDATE"
+      );
       throw new ConflictError(
         "Slot waktu ini sudah dibooking oleh orang lain. Silakan pilih waktu lain."
       );
@@ -111,6 +120,14 @@ export async function createBooking(input: {
       // Fallback kalau exclusion constraint di database yang menangkap overlap
       // (harusnya jarang kena karena sudah dicek di atas, tapi tetap ditangani).
       if (err?.code === PG_EXCLUSION_VIOLATION) {
+        logger.warn(
+          {
+            resourceId: input.resourceId,
+            startTime: input.startTime,
+            endTime: input.endTime,
+          },
+          "double booking ditolak oleh exclusion constraint database"
+        );
         throw new ConflictError(
           "Slot waktu ini sudah dibooking oleh orang lain. Silakan pilih waktu lain."
         );
@@ -118,6 +135,15 @@ export async function createBooking(input: {
       throw err;
     }
   });
+
+  logger.info(
+    {
+      bookingId: created.id,
+      resourceId: created.resourceId,
+      userId: created.userId,
+    },
+    "booking berhasil dibuat"
+  );
 
   if (!isPaid) {
     try {

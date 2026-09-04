@@ -16,6 +16,7 @@ Frontend: [`booking-frontend`](https://github.com/farhanbudi/booking-frontend)
 | ORM | [Drizzle ORM](https://orm.drizzle.team) |
 | Auth | JWT (`@elysiajs/jwt`) + Argon2id via `Bun.password` |
 | Background Job | [BullMQ](https://docs.bullmq.io) + Redis (email konfirmasi/pembatalan/reminder) |
+| Logging | [pino](https://getpino.io) (NDJSON) + [`@bogeychan/elysia-logger`](https://github.com/bogeychan/elysia-logger) untuk request/error otomatis |
 
 ---
 
@@ -221,6 +222,65 @@ Kartu tes untuk gagal checkout: `4000 0000 0000 0002`
 
 ---
 
+## Logging
+
+Aplikasi menggunakan logger terpusat berbasis [pino](https://getpino.io) yang
+diteruskan ke lifecycle Elysia lewat [`@bogeychan/elysia-logger`](https://github.com/bogeychan/elysia-logger).
+Seluruh output ditulis dalam format **NDJSON** (satu JSON per baris) ke dua tujuan:
+
+| Tujuan | Isi |
+|---|---|
+| `stdout` | Baris NDJSON mentah di production, atau format `pino-pretty` berwarna di development |
+| `logs/app.log` | Selalu NDJSON mentah, satu file (di-`gitignore`) |
+
+Level log dikontrol lewat env `LOG_LEVEL` (default `info` di production, `debug`
+di development). Field sensitif — `password`, `passwordHash`, dan
+`Authorization` header — otomatis disensor menjadi `"[REDACTED]"` lewat
+konfigurasi `redact` pino, sehingga password tidak akan pernah bocor ke log.
+
+### Event yang di-log
+
+- **Request/error otomatis** (dari `elysiaLogger`): semua request masuk + response,
+  plus error 4xx sebagai `warn` dan 5xx sebagai `error`.
+- **Bisnis — `bookings`**: `warn` saat double-booking terdeteksi (oleh cek
+  `FOR UPDATE` maupun exclusion constraint), `info` saat booking berhasil dibuat.
+- **Bisnis — `auth`**: `warn` saat login gagal (email tidak ditemukan / password
+  salah) — hanya `email` yang dicatat, tanpa password.
+
+### Melihat log secara real-time
+
+Dua script tersedia di `package.json`, keduanya cross-platform (Windows/macOS/Linux)
+dan polling `fs.statSync` setiap 100 ms — tidak butuh `tail`/`grep` di PATH.
+
+| Script | Tujuan | Cocok untuk |
+|---|---|---|
+| `bun run logs:tail` | Live-tail `logs/app.log` lewat `pino-pretty` (output verbos: method, path, status, headers, response time) | Debugging detail satu request |
+| `bun run logs:tail:simple` | Live-tail dengan filter event bisnis (warn/error selalu, info hanya untuk event `login`/`booking`/`payment`/`user dibuat`/`request error`) | Monitoring umum — output 1 baris per event penting |
+
+```bash
+# Terminal 1: jalankan server
+bun run dev
+
+# Terminal 2: pantau event penting saja (cocok untuk penggunaan harian)
+bun run logs:tail:simple
+```
+
+Contoh output `logs:tail:simple` saat ada login gagal, error 500, dan booking
+sukses dalam satu waktu:
+
+```
+2026-09-04T07:01:02.000Z  WARN   password salah            email=user@test.com
+2026-09-04T07:01:03.000Z  ERROR  request error             statusCode=500 err={"type":"Error","message":"DB down"}
+2026-09-04T07:01:05.000Z  INFO   payment received          paymentId=p-1 amount=50000
+2026-09-04T07:01:06.000Z  INFO   booking berhasil dibuat   bookingId=b42 resourceId=r1 userId=u7
+```
+
+Auto-log info dari Elysia (`incoming request`, `request completed`, dll)
+disaring supaya tidak memenuhi layar — pakai `logs:tail` (bukan `:simple`)
+kalau memang perlu melihat detail request per HTTP.
+
+---
+
 ## Daftar Endpoint
 
 | Method | Path | Auth | Keterangan |
@@ -311,3 +371,5 @@ Yang diuji:
 | `bun run test:watch` | Jalankan test dengan mode watch |
 | `bun run test:server` | Jalankan server khusus e2e frontend (konfigurasi dari `.env.test`) |
 | `bun run db:studio` | Buka Drizzle Studio |
+| `bun run logs:tail` | Live-tail `logs/app.log` lewat `pino-pretty` (verbos, untuk debugging) |
+| `bun run logs:tail:simple` | Live-tail dengan filter event bisnis (cocok untuk monitoring harian) |

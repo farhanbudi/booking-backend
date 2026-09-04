@@ -7,8 +7,10 @@ import { resourceRoutes } from "./routes/resources.routes";
 import { bookingRoutes } from "./routes/bookings.routes";
 import { paymentRoutes } from "./routes/payments.routes";
 import { AppError } from "./utils/errors";
+import { elysiaLogger } from "./utils/logger";
 
 const app = new Elysia()
+  .use(elysiaLogger)
   .use(cors())
   .use(
     openapi({
@@ -34,7 +36,27 @@ const app = new Elysia()
   .use(bookingRoutes)
   .use(paymentRoutes)
 
-  .onError(({ code, error, set }) => {
+  .onError(({ code, error, set, log }) => {
+    // Tentukan level log & payload berdasarkan status code akhir.
+    // Penting: untuk `AppError` kita sudah tau status-nya, jadi set dulu
+    // sebelum baca `set.status`. Untuk validation / not_found / unknown,
+    // pakai nilai default yang kita assign di blok masing-masing.
+    let resolvedStatus = 0;
+    if (error instanceof AppError) {
+      resolvedStatus = error.statusCode;
+    } else if (code === "VALIDATION") {
+      resolvedStatus = 400;
+    } else if (code === "NOT_FOUND") {
+      resolvedStatus = 404;
+    } else {
+      resolvedStatus = 500;
+    }
+    const isServerError = resolvedStatus >= 500;
+    (log as typeof log | undefined)?.[isServerError ? "error" : "warn"](
+      { err: error, statusCode: resolvedStatus },
+      "request error"
+    );
+
     if (error instanceof AppError) {
       console.error("[error] AppError:", error.statusCode, error.message);
       set.status = error.statusCode;
