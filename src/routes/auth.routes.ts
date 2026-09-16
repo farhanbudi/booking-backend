@@ -72,8 +72,6 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
     }
   )
 
-  // protected route (need token)
-  .use(requireAuth)
   .post(
     "/logout",
     async ({ body }) => {
@@ -81,9 +79,6 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       return { success: true };
     },
     {
-      detail: {
-        security: [{ bearerAuth: [] }]
-      },
       body: t.Object({
         refreshToken: t.String(),
       }),

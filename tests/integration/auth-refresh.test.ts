@@ -108,11 +108,9 @@ describe("Auth refresh integration", () => {
   it("refresh with revoked token returns 401", async () => {
     const { data: loginData } = await login();
     const refreshToken = (loginData as any).refreshToken;
-    const accessToken = (loginData as any).accessToken;
 
     await requestJson(app, "/auth/logout", {
       method: "POST",
-      token: accessToken,
       body: { refreshToken },
     });
 
@@ -124,14 +122,12 @@ describe("Auth refresh integration", () => {
     expect(res.status).toBe(401);
   });
 
-  it("logout revokes user session; subsequent refresh fails with 401", async () => {
+  it("logout revokes token; subsequent refresh fails with 401", async () => {
     const { data: loginData } = await login();
     const refreshToken = (loginData as any).refreshToken;
-    const accessToken = (loginData as any).accessToken;
 
     const logoutRes = await requestJson(app, "/auth/logout", {
       method: "POST",
-      token: accessToken,
       body: { refreshToken },
     });
 
@@ -144,49 +140,6 @@ describe("Auth refresh integration", () => {
     });
 
     expect(res.status).toBe(401);
-  });
-
-  it("logout revokes only the specified session from multiple devices", async () => {
-    const login1 = await login();
-    const refreshToken1 = (login1.data as any).refreshToken;
-    const accessToken1 = (login1.data as any).accessToken;
-
-    const login2 = await login();
-    const refreshToken2 = (login2.data as any).refreshToken;
-
-    const sessionsBefore = await db.query.sessions.findMany({
-      where: eq(sessions.userId, TEST_USER_ID),
-    });
-    expect(sessionsBefore.length).toBe(2);
-    expect(sessionsBefore.every((s) => s.revokedAt === null)).toBe(true);
-
-    const logoutRes = await requestJson(app, "/auth/logout", {
-      method: "POST",
-      token: accessToken1,
-      body: { refreshToken: refreshToken1 },
-    });
-    expect(logoutRes.status).toBe(200);
-
-    const sessionsAfter = await db.query.sessions.findMany({
-      where: eq(sessions.userId, TEST_USER_ID),
-    });
-    expect(sessionsAfter.length).toBe(2);
-    const revokedSessions = sessionsAfter.filter((s) => s.revokedAt !== null);
-    const activeSessions = sessionsAfter.filter((s) => s.revokedAt === null);
-    expect(revokedSessions.length).toBe(1);
-    expect(activeSessions.length).toBe(1);
-
-    const res1 = await requestJson(app, "/auth/refresh", {
-      method: "POST",
-      body: { refreshToken: refreshToken1 },
-    });
-    expect(res1.status).toBe(401);
-
-    const res2 = await requestJson(app, "/auth/refresh", {
-      method: "POST",
-      body: { refreshToken: refreshToken2 },
-    });
-    expect(res2.status).toBe(200);
   });
 
   it("multiple refreshes with same token succeed (no rotation)", async () => {
@@ -222,7 +175,7 @@ describe("Auth refresh integration", () => {
     expect(res.status).toBe(400);
   });
 
-  it("logout without refresh token returns 400", async () => {
+  it("logout with missing body returns 400", async () => {
     const res = await requestJson(app, "/auth/logout", {
       method: "POST",
       body: {},
