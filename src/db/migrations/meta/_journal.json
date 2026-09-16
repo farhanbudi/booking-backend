@@ -15,6 +15,13 @@
       "when": 1787739728064,
       "tag": "0001_solid_pepper_potts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788866688294,
+      "tag": "0002_legal_avengers",
+      "breakpoints": true
     }
   ]
 }

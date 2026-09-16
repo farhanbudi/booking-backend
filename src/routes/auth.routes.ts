@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { authPlugin, requireAuth } from "../middleware/auth.middleware";
 import { registerUser, validateLogin, getUserById } from "../modules/auth/auth.service";
+import { createSession, validateSession, revokeSession } from "../modules/auth/session.service";
 
 export const authRoutes = new Elysia({ prefix: "/auth" })
   .use(authPlugin)
@@ -30,17 +31,56 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
     "/login",
     async ({ body, jwt }) => {
       const user = await validateLogin(body);
-      const token = await jwt.sign({
+      const accessToken = await jwt.sign({
         sub: user.id,
         email: user.email,
         role: user.role,
+        exp: Math.floor(Date.now() / 1000) + Number(process.env.ACCESS_TOKEN_TTL_MINUTES ?? 15) * 60,
       });
-      return { token };
+      const refreshToken = await createSession({
+        userId: user.id,
+        userAgent: null,
+        ipAddress: null,
+      });
+      return { accessToken, refreshToken, token: accessToken };
     },
     {
       body: t.Object({
         email: t.String({ format: "email" }),
         password: t.String(),
+      }),
+    }
+  )
+
+  .post(
+    "/refresh",
+    async ({ body, jwt }) => {
+      const session = await validateSession(body.refreshToken);
+      const user = await getUserById(session.userId);
+      const accessToken = await jwt.sign({
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+        exp: Math.floor(Date.now() / 1000) + Number(process.env.ACCESS_TOKEN_TTL_MINUTES ?? 15) * 60,
+      });
+      return { accessToken };
+    },
+    {
+      body: t.Object({
+        refreshToken: t.String(),
+      }),
+    }
+  )
+
+  .post(
+    "/logout",
+    async ({ body }) => {
+      await revokeSession(body.refreshToken);
+      return { success: true };
+    },
+    {
+      body: t.Object({
+        refreshToken: t.String(),
       }),
     }
   )
