@@ -1,4 +1,9 @@
-## MODIFIED Requirements
+# auth/login Specification
+
+## Purpose
+Handles user authentication and issues access/refresh token pairs upon successful credential validation.
+
+## Requirements
 
 ### Requirement: User login returns access and refresh tokens
 
