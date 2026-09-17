@@ -1,4 +1,4 @@
-import { getBookingEmailQueue } from "./queues";
+import { bookingEmailQueue } from "../queue";
 import { reminderDelayMs } from "./reminder-delay";
 import {
   JOB_NAME_CANCELLATION,
@@ -17,12 +17,12 @@ const retryOpts = {
 
 export async function enqueueConfirmation(bookingId: string): Promise<void> {
   const data: BookingEmailData = { bookingId };
-  await getBookingEmailQueue().add(JOB_NAME_CONFIRMATION, data, retryOpts);
+  await bookingEmailQueue.add(JOB_NAME_CONFIRMATION, data, retryOpts);
 }
 
 export async function enqueueCancellation(bookingId: string): Promise<void> {
   const data: BookingEmailData = { bookingId };
-  await getBookingEmailQueue().add(JOB_NAME_CANCELLATION, data, retryOpts);
+  await bookingEmailQueue.add(JOB_NAME_CANCELLATION, data, retryOpts);
 }
 
 export async function scheduleReminder(
@@ -35,7 +35,7 @@ export async function scheduleReminder(
     return false;
   }
   const data: BookingEmailData = { bookingId };
-  await getBookingEmailQueue().add(JOB_NAME_REMINDER, data, {
+  await bookingEmailQueue.add(JOB_NAME_REMINDER, data, {
     ...retryOpts,
     delay,
     jobId: reminderJobId(bookingId),
@@ -44,7 +44,7 @@ export async function scheduleReminder(
 }
 
 export async function removeReminder(bookingId: string): Promise<void> {
-  await getBookingEmailQueue().remove(reminderJobId(bookingId));
+  await bookingEmailQueue.remove(reminderJobId(bookingId));
 }
 
 // Job delayed auto-expiry untuk booking pending yang tidak dibayar (design D5).
@@ -54,7 +54,7 @@ export async function scheduleExpiry(
   ttlMs: number
 ): Promise<void> {
   const data: BookingEmailData = { bookingId };
-  await getBookingEmailQueue().add(JOB_NAME_EXPIRE_PAYMENT, data, {
+  await bookingEmailQueue.add(JOB_NAME_EXPIRE_PAYMENT, data, {
     delay: ttlMs,
     jobId: expireJobId(bookingId),
     attempts: 1,
@@ -62,5 +62,5 @@ export async function scheduleExpiry(
 }
 
 export async function removeExpiry(bookingId: string): Promise<void> {
-  await getBookingEmailQueue().remove(expireJobId(bookingId));
+  await bookingEmailQueue.remove(expireJobId(bookingId));
 }

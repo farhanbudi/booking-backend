@@ -10,6 +10,7 @@
 import { loadTestEnvFile, assertTestDatabaseUrl } from "./utils/test-env";
 import { resetTestDatabase } from "./db/prepare-test-db";
 import { seedDatabase } from "./db/seed";
+import { startServer } from "./index";
 
 loadTestEnvFile();
 assertTestDatabaseUrl();
@@ -17,4 +18,4 @@ assertTestDatabaseUrl();
 await resetTestDatabase();
 await seedDatabase();
 
-await import("./index");
+startServer();

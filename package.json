@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
+    "dev:api": "RUN_MODE=api bun run --watch src/index.ts",
+    "dev:worker": "RUN_MODE=worker bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "worker": "bun run src/worker.ts",
+    "worker": "RUN_MODE=worker bun run src/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run src/db/migrate.ts",
     "db:seed": "bun run src/db/seed.ts",

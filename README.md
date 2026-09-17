@@ -52,9 +52,8 @@ bun run db:seed
 docker run -d --name booking-redis -p 6379:6379 redis:7
 docker run -d --name booking-mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit
 
-# 7. Jalankan server API dan worker email (dua proses terpisah)
+# 7. Jalankan aplikasi (server + worker berjalan bareng dalam 1 proses)
 bun run dev
-bun run worker
 ```
 
 Server berjalan di **`http://localhost:3000`**, web UI Mailpit di **`http://localhost:8025`**.
@@ -68,6 +67,26 @@ Server berjalan di **`http://localhost:3000`**, web UI Mailpit di **`http://loca
 Resource yang tersedia: Meeting Room A, Meeting Room B, Ruang Rapat Eksekutif, Pod Diskusi Kecil.
 
 > Seed hanya perlu dijalankan sekali. Menjalankan ulang akan menghasilkan error `duplicate key`, yang merupakan perilaku normal.
+
+---
+
+## RUN_MODE
+
+Aplikasi mendukung variabel lingkungan `RUN_MODE` untuk mengontrol proses mana yang dijalankan:
+
+| RUN_MODE | Perilaku | Dipakai saat |
+|---|---|---|
+| `all` (default) | Server API + Worker email berjalan bareng dalam 1 proses | Deploy tier gratis Render (1 Web Service) |
+| `api` | Hanya server API yang berjalan | Deploy sebagai Web Service terpisah |
+| `worker` | Hanya worker email yang berjalan | Deploy sebagai Background Worker terpisah (bukan tier gratis) |
+
+**Cara deploy ke Render tier gratis (1 service):**
+- Tidak perlu mengatur `RUN_MODE` — defaultnya `"all"`, server + worker berjalan bareng dalam satu proses Bun.
+
+**Cara deploy dengan 2 service (jika diperlukan di masa depan):**
+- Web Service: set `RUN_MODE=api`
+- Background Worker: set `RUN_MODE=worker`
+- **Catatan**: Background Worker di Render bukan tier gratis — ini keputusan infrastruktur, bukan kode.
 
 ---
 
@@ -87,11 +106,13 @@ src/
 │   ├── auth/              # Register, login, profile
 │   ├── resources/         # CRUD resource
 │   └── bookings/          # Pengecekan ketersediaan + pembuatan booking
+├── queue.ts               # Definisi Queue BullMQ + koneksi Redis
+├── server.ts              # Setup Elysia app + route (startServer)
+├── worker.ts              # Logic worker BullMQ (startWorker)
 ├── jobs/
-│   ├── queues.ts        # Definisi queue BullMQ (`booking-emails`)
-│   ├── producers.ts     # Enqueue/schedule/remove job email
-│   ├── processors.ts    # Processor: verifikasi status → render → kirim
-│   └── types.ts         # Nama job & tipe payload
+│   ├── producers.ts       # Enqueue/schedule/remove job email
+│   ├── processors.ts      # Processor: verifikasi status → render → kirim
+│   └── types.ts           # Nama job & tipe payload
 ├── mailer/
 │   ├── mailer.ts        # Transport SMTP (nodemailer)
 │   └── templates.ts     # Template email plain-text (Bahasa Indonesia)
@@ -101,8 +122,8 @@ src/
 │   └── bookings.routes.ts
 ├── utils/
 │   └── errors.ts          # Custom error classes
-├── index.ts               # Entry point API
-└── worker.ts              # Entry point worker email (proses terpisah)
+├── index.ts               # Entry point: baca RUN_MODE, putuskan server/worker
+└── run-test-server.ts     # Server e2e untuk test frontend
 ```
 
 ---
@@ -361,9 +382,10 @@ Yang diuji:
 
 | Command | Keterangan |
 |---|---|
-| `bun run dev` | Jalankan development server dengan hot-reload |
-| `bun run start` | Jalankan server production |
-| `bun run worker` | Jalankan worker email BullMQ (proses terpisah dari API) |
+| `bun run dev` | Jalankan development server + worker (hot-reload, 1 proses) |
+| `bun run dev:api` | Jalankan server API saja (hot-reload, RUN_MODE=api) |
+| `bun run dev:worker` | Jalankan worker saja (hot-reload, RUN_MODE=worker) |
+| `bun run start` | Jalankan server production (RUN_MODE=all default) |
 | `bun run db:generate` | Generate file migrasi dari schema |
 | `bun run db:migrate` | Apply semua migrasi ke database |
 | `bun run db:seed` | Isi data awal |

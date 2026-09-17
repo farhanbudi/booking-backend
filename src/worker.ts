@@ -1,8 +1,7 @@
-import Redis from "ioredis";
 import { Worker } from "bullmq";
+import { redisConnection } from "./queue";
 import { bookingEmailProcessor } from "./jobs/processors";
 import { QUEUE_NAME, type BookingEmailData } from "./jobs/types";
-import { closeMailer } from "./mailer/mailer";
 
 function validateEnv(): void {
   const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
@@ -21,53 +20,39 @@ function validateEnv(): void {
   }
 }
 
-validateEnv();
+export function startWorker() {
+  validateEnv();
 
-const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
-const connection = new Redis(redisUrl, { maxRetriesPerRequest: null });
+  const worker = new Worker<BookingEmailData>(QUEUE_NAME, bookingEmailProcessor, {
+    connection: redisConnection,
+    removeOnComplete: { age: 600 },
+    removeOnFail: { count: 50 },
+  });
 
-const worker = new Worker<BookingEmailData>(QUEUE_NAME, bookingEmailProcessor, {
-  connection,
-  removeOnComplete: { age: 600 },
-  removeOnFail: { count: 50 },
-});
+  worker.on("completed", (job) => {
+    console.log(`[email-worker] job ${job.name} (${job.id}) selesai`);
+  });
 
-worker.on("completed", (job) => {
-  console.log(`[email-worker] job ${job.name} (${job.id}) selesai`);
-});
+  worker.on("failed", (job, err) => {
+    if (!job) {
+      console.error("[email-worker] job gagal tanpa data:", err.message);
+      return;
+    }
+    const total = job.opts.attempts ?? 1;
+    if (job.attemptsMade >= total) {
+      console.error(
+        `[email-worker] job ${job.name} (${job.id}) gagal permanen setelah ${total} percobaan: ${err.message}`,
+      );
+    } else {
+      console.warn(
+        `[email-worker] job ${job.name} (${job.id}) gagal pada percobaan ${job.attemptsMade}/${total}, akan dicoba ulang: ${err.message}`,
+      );
+    }
+  });
 
-worker.on("failed", (job, err) => {
-  if (!job) {
-    console.error("[email-worker] job gagal tanpa data:", err.message);
-    return;
-  }
-  const total = job.opts.attempts ?? 1;
-  if (job.attemptsMade >= total) {
-    console.error(
-      `[email-worker] job ${job.name} (${job.id}) gagal permanen setelah ${total} percobaan: ${err.message}`,
-    );
-  } else {
-    console.warn(
-      `[email-worker] job ${job.name} (${job.id}) gagal pada percobaan ${job.attemptsMade}/${total}, akan dicoba ulang: ${err.message}`,
-    );
-  }
-});
+  console.log(
+    `[email-worker] berjalan untuk queue "${QUEUE_NAME}" (redis: ${process.env.REDIS_URL ?? "redis://localhost:6379"})`,
+  );
 
-console.log(
-  `[email-worker] berjalan untuk queue "${QUEUE_NAME}" (redis: ${redisUrl})`,
-);
-
-let closing = false;
-
-async function shutdown(signal: string): Promise<void> {
-  if (closing) return;
-  closing = true;
-  console.log(`[email-worker] menerima ${signal}, mematikan worker...`);
-  await worker.close();
-  connection.disconnect();
-  closeMailer();
-  process.exit(0);
+  return worker;
 }
-
-process.on("SIGINT", () => void shutdown("SIGINT"));
-process.on("SIGTERM", () => void shutdown("SIGTERM"));

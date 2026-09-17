@@ -1,85 +1,43 @@
-import { Elysia } from "elysia";
-import { cors } from "@elysiajs/cors";
-import { openapi } from "@elysiajs/openapi";
-// @ts-ignore - types may not include all runtime options
-import { authRoutes } from "./routes/auth.routes";
-import { resourceRoutes } from "./routes/resources.routes";
-import { bookingRoutes } from "./routes/bookings.routes";
-import { paymentRoutes } from "./routes/payments.routes";
-import { AppError } from "./utils/errors";
-import { elysiaLogger } from "./utils/logger";
+import { startServer } from "./server";
+import { startWorker } from "./worker";
+import { redisConnection } from "./queue";
+import { closeMailer } from "./mailer/mailer";
 
-const app = new Elysia()
-  .use(elysiaLogger)
-  .use(cors())
-  .use(
-    openapi({
-      documentation: {
-        components: {
-          securitySchemes: {
-            bearerAuth: {
-              type: "http",
-              scheme: "bearer",
-              bearerFormat: "JWT",
-            },
-          },
-        },
-      },
-      swagger: {
-        persistAuthorization: true,
-      },
-    })
-  )
-  .get("/", () => ({ status: "ok", service: "booking-backend" }))
-  .use(authRoutes)
-  .use(resourceRoutes)
-  .use(bookingRoutes)
-  .use(paymentRoutes)
+export { startServer, startWorker };
 
-  .onError(({ code, error, set, log }) => {
-    // Tentukan level log & payload berdasarkan status code akhir.
-    // Penting: untuk `AppError` kita sudah tau status-nya, jadi set dulu
-    // sebelum baca `set.status`. Untuk validation / not_found / unknown,
-    // pakai nilai default yang kita assign di blok masing-masing.
-    let resolvedStatus = 0;
-    if (error instanceof AppError) {
-      resolvedStatus = error.statusCode;
-    } else if (code === "VALIDATION") {
-      resolvedStatus = 400;
-    } else if (code === "NOT_FOUND") {
-      resolvedStatus = 404;
-    } else {
-      resolvedStatus = 500;
-    }
-    const isServerError = resolvedStatus >= 500;
-    (log as typeof log | undefined)?.[isServerError ? "error" : "warn"](
-      { err: error, statusCode: resolvedStatus },
-      "request error"
-    );
+const RUN_MODE = process.env.RUN_MODE ?? "all";
+let workerInstance: ReturnType<typeof startWorker> | undefined;
 
-    if (error instanceof AppError) {
-      console.error("[error] AppError:", error.statusCode, error.message);
-      set.status = error.statusCode;
-      return { error: error.message };
-    }
+async function shutdown(signal: string): Promise<void> {
+  console.log(`${signal} diterima, menutup koneksi dengan baik...`);
+  if (workerInstance) {
+    await workerInstance.close();
+  }
+  redisConnection.disconnect();
+  closeMailer();
+  process.exit(0);
+}
 
-    if (code === "VALIDATION") {
-      set.status = 400;
-      return { error: "Input tidak valid", detail: error.message };
-    }
+if (import.meta.main) {
+  switch (RUN_MODE) {
+    case "api":
+      startServer();
+      break;
+    case "worker":
+      workerInstance = startWorker();
+      break;
+    case "all":
+      startServer();
+      workerInstance = startWorker();
+      break;
+    default:
+      console.warn(
+        `⚠️  RUN_MODE "${RUN_MODE}" tidak dikenali, fallback ke "all" (server + worker jalan bareng)`,
+      );
+      startServer();
+      workerInstance = startWorker();
+  }
 
-    if (code === "NOT_FOUND") {
-      set.status = 404;
-      return { error: "Route tidak ditemukan" };
-    }
-
-    console.error(error);
-    set.status = 500;
-    return { error: "Terjadi kesalahan pada server" };
-  })
-
-  .listen(process.env.PORT ?? 3000);
-
-console.log(
-  `🦊 Booking backend jalan di http://${app.server?.hostname}:${app.server?.port}`
-);
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+}
