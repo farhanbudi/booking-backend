@@ -32,6 +32,7 @@ export function startServer() {
       }),
     )
     .get("/", () => ({ status: "ok", service: "booking-backend" }))
+    .get("/health", () => new Response("ok"))
     .use(authRoutes)
     .use(resourceRoutes)
     .use(bookingRoutes)
@@ -82,3 +83,4 @@ export function startServer() {
   );
   return app;
 }
+
