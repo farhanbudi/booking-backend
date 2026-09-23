@@ -43,8 +43,8 @@ export async function seedDatabase(): Promise<void> {
   }
 
   // --- Admin user contoh (memudahkan testing endpoint admin) ---
-  const adminEmail = "admin@example.com";
-  const adminPassword = "admin12345";
+  const adminEmail = process.env.ADMIN_EMAIL ?? "admin@example.com";
+  const adminPassword = process.env.ADMIN_PASSWORD ?? "admin12345";
 
   const passwordHash = await Bun.password.hash(adminPassword);
   await db.insert(users).values({
@@ -54,7 +54,7 @@ export async function seedDatabase(): Promise<void> {
     role: "admin",
   });
 
-  console.log(`  ✓ Admin user dibuat: ${adminEmail} / ${adminPassword}`);
+  console.log(`  ✓ Admin user dibuat: ${adminEmail}`);
   console.log("🌱 Seeding selesai.");
 }
 
