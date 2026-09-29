@@ -1,0 +1,81 @@
+# Blueprint Render untuk booking-backend.
+# Deploy tier gratis: 1 Web Service (API + worker email dalam 1 proses).
+#
+# Postgres dan Redis berada DI LUAR Render (self-hosted / provider lain), jadi
+# file ini tidak mendeklarasikan `databases:` maupun `kv:`. Keduanya diisi lewat
+# environment variable seperti biasa.
+#
+# Rahasia (JWT_SECRET, STRIPE_*, SMTP_*, DATABASE_URL, REDIS_URL, ADMIN_PASSWORD)
+# TIDAK ditulis di file ini. Semuanya pakai `sync: false`, jadi Render meminta
+# nilainya saat blueprint pertama di-apply dan menyimpannya di dashboard sebagai
+# environment variable terenkripsi.
+#
+# Catatan penting:
+# - Render hanya meminta nilai `sync: false` saat blueprint DIBUAT pertama kali.
+#   Setelah itu, nilai yang sudah tersimpan di dashboard tetap dipakai.
+# - Nilai yang kamu ubah manual di dashboard AKAN DITIMPA oleh isi file ini
+#   setiap kali blueprint di-sync ulang, selama key-nya masih dideklarasikan di
+#   `render.yaml`. Jadi view `render.yaml` sebagai source of truth untuk nilai
+#   yang di-declare di sana.
+# - Free Web Service tidur setelah 15 menit tanpa request. Koneksi Redis/BullMQ
+#   ikut disconnect dan job baru diproses setelah service bangun.
+
+services:
+  - type: web
+    name: booking-backend
+    runtime: bun
+    plan: free
+    region: singapore
+    buildCommand: bun install
+    startCommand: bun run start
+    healthCheckPath: /health
+    # PORT sengaja tidak di-set: Render yang menentukan port dan
+    # meneruskannya lewat process env.
+    envVars:
+      - key: RUN_MODE
+        value: all
+
+      # Infrastruktur eksternal: isi dengan connection string sebenarnya.
+      # Postgres wajib mengizinkan koneksi dari IP egress Render.
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+
+      - key: JWT_SECRET
+        sync: false
+
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: PAYMENT_CURRENCY
+        value: idr
+      - key: PAYMENT_EXPIRY_MINUTES
+        value: "15"
+      - key: PAYMENT_SUCCESS_URL
+        sync: false
+      - key: PAYMENT_CANCEL_URL
+        sync: false
+
+      - key: ACCESS_TOKEN_TTL_MINUTES
+        value: "15"
+      - key: REFRESH_TOKEN_TTL_DAYS
+        value: "30"
+
+      # Dipakai hanya oleh `bun run db:seed`, bukan oleh service yang berjalan.
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false

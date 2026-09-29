@@ -82,6 +82,21 @@ Aplikasi mendukung variabel lingkungan `RUN_MODE` untuk mengontrol proses mana y
 
 **Cara deploy ke Render tier gratis (1 service):**
 - Tidak perlu mengatur `RUN_MODE` — defaultnya `"all"`, server + worker berjalan bareng dalam satu proses Bun.
+- Repo ini sudah punya blueprint `render.yaml` (1 Web Service saja — Postgres dan Redis berada di luar Render). Di dashboard Render pilih **New → Blueprint**, arahkan ke repo ini, lalu isi nilai untuk semua variabel `sync: false` (rahasia) saat diminta. Root Directory dan Build Filters dibiarkan kosong.
+- `PORT` tidak perlu di-set — Render yang menentukannya.
+
+> **Catatan:** Render hanya meminta nilai `sync: false` saat blueprint dibuat pertama kali. Nilai yang diubah manual di dashboard akan **ditimpa oleh isi `render.yaml`** setiap kali blueprint di-sync ulang, selama key-nya masih dideklarasikan di sana. JANGAN unggah `.env` sebagai Secret File — Render menaruhnya sebagai file biasa di direktori service dan Bun tidak menimpa process env dengan isi `.env`, jadi hasilnya ambigu. Pakai Environment Variables saja.
+
+> **Catatan tier gratis Render:** Web Service tidur setelah 15 menit tanpa request, sehingga job BullMQ baru diproses setelah service bangun. Karena Postgres dan Redis di luar Render, keduanya harus tetap hidup 24/7 dan mengizinkan koneksi masuk dari IP egress Render (free plan tidak punya IP egress statis, jadi opsi paling aman adalah firewall berbasis password/whitelist atau jaringan privat).
+
+**Setelah deploy pertama, wajib dijalankan manual:**
+1. `bun run db:migrate` (atau `bunx drizzle-kit migrate`) terhadap `DATABASE_URL` production.
+2. Exclusion constraint untuk proteksi double-booking **tidak** ada di migration Drizzle, jadi harus dipasang manual:
+   ```
+   psql $DATABASE_URL -f src/db/migrations/manual_0001_exclusion_constraint.sql
+   ```
+   Tanpa langkah ini, proteksi double-booking di level database tidak aktif.
+3. `bun run db:seed` sekali saja untuk membuat user admin.
 
 **Cara deploy dengan 2 service (jika diperlukan di masa depan):**
 - Web Service: set `RUN_MODE=api`
