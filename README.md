@@ -194,6 +194,30 @@ Email dikirim **asinkron** lewat background job [BullMQ](https://docs.bullmq.io)
 
 Reminder tidak dikirim bila booking sudah dibatalkan, dan tidak dijadwalkan untuk booking last-minute (mulai < 1 jam lagi). Job gagal dicoba ulang otomatis maksimal **3 percobaan** dengan exponential backoff. Sebelum mengirim, worker selalu memverifikasi ulang status booking di database.
 
+### Memilih provider email
+
+Transport email ditentukan oleh satu env var, `MAIL_PROVIDER`:
+
+| `MAIL_PROVIDER` | Dipakai untuk | Transport | Env yang dibutuhkan |
+|---|---|---|---|
+| `smtp` (default) | Development | Mailpit di `localhost:1025` | `SMTP_HOST`, `SMTP_PORT` (opsional) |
+| `mailgun` | Production | SMTP Mailgun | `MAILGUN_SMTP_HOST`, `MAILGUN_SMTP_PORT`, `MAILGUN_SMTP_LOGIN`, `MAILGUN_SMTP_PASSWORD`, `DEMO_EMAIL` |
+
+`MAIL_FROM` dipakai di kedua mode. Nilai `MAIL_PROVIDER` yang tidak dikenali membuat worker **berhenti start** dengan pesan jelas — sengaja tidak fallback diam-diam, karena fallback diam-diam akan mengirim email produksi ke host yang salah. Mode `mailgun` juga berhenti start kalau salah satu dari empat variabel `MAILGUN_SMTP_*` atau `DEMO_EMAIL` kosong. Proses `RUN_MODE=api` tidak terpengaruh, karena tidak pernah mengirim email.
+
+Keempat `MAILGUN_SMTP_*` diisi langsung dari kredensial SMTP yang diberikan Mailgun (menu **Sending → SMTP credentials**): hostname, port, login, dan password. Opsi `secure` tidak diset manual — nodemailer mengaktifkannya hanya bila port-nya 465, sedangkan port 587 memakai STARTTLS.
+
+#### Mode demo di produksi
+
+Kuota free tier Mailgun terbatas (100 email/hari), sedangkan semua user terdaftar bisa membuat booking. Karena itu `DEMO_EMAIL` menentukan satu-satunya alamat yang benar-benar menerima email di mode `mailgun`:
+
+- Job tetap dibuat dan diproses untuk **semua** user — antrean, pengecekan status booking, dan render template tidak berubah.
+- Hanya pengiriman ke alamat selain `DEMO_EMAIL` yang dilewati, dan job itu dianggap **berhasil** (tidak di-retry, tidak tercatat gagal). Setiap dilewati menghasilkan satu baris log di output worker.
+- Pencocokan alamat mengabaikan huruf besar-kecil dan spasi di sekitar.
+- Menghapus `DEMO_EMAIL` tidak otomatis membuat semua user dikirimi email — worker justru berhenti start. Going live ke semua user adalah keputusan yang disengaja.
+
+> **Sebelum deploy:** domain pada `MAIL_FROM` harus sudah diverifikasi di Mailgun (menu Domains). Kalau belum, semua email ditolak, retry 3×, lalu job di-discard — gejalanya baru terlihat dari log worker, bukan dari proses startup.
+
 ### Menjalankan Redis & Mailpit (development)
 
 ```bash
@@ -202,7 +226,7 @@ docker run -d --name booking-mailpit --restart unless-stopped -p 1025:1025 -p 80
 ```
 
 - `booking-redis`: server queue (variabel `REDIS_URL`, default `redis://localhost:6379`).
-- `booking-mailpit`: SMTP dummy yang menangkap semua email; lihat hasil kiriman di web UI `http://localhost:8025`.
+- `booking-mailpit`: SMTP dummy yang menangkap semua email; lihat hasil kiriman di web UI `http://localhost:8025`. Karena Mailpit tidak punya kuota, semua user tetap dikirimi email di mode `smtp`.
 
 Setelah itu jalankan worker bersama API (dua proses terpisah):
 
@@ -212,7 +236,11 @@ bun run worker  # worker email (consumer)
 ```
 
 > Tanpa worker berjalan, email menumpuk di queue dan tidak terkirim — API tetap berjalan normal.
-> Untuk produksi: gunakan penyedia SMTP (mis. Amazon SES, Resend SMTP) karena email dari localhost rawan diblokir, serta aktifkan persistensi Redis (AOF/RDB) agar delayed job reminder tidak hilang saat restart.
+> Untuk produksi: set `MAIL_PROVIDER=mailgun` beserta keempat `MAILGUN_SMTP_*` dan `DEMO_EMAIL`, serta aktifkan persistensi Redis (AOF/RDB) agar delayed job reminder tidak hilang saat restart.
+
+### Catatan Render
+
+`render.yaml` tidak lagi mendeklarasikan `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` karena production memakai `MAIL_PROVIDER=mailgun`. Menghapus kunci dari `render.yaml` **tidak menghapus** nilainya dari dashboard Render — Render hanya berhenti meminta nilainya. Nilai lama masih menempel di sana dan tidak berbahaya selama `MAIL_PROVIDER=mailgun`, tapi perlu diketahui saat rollback. Sama seperti keys yang dihapus, `RESEND_API_KEY` lama juga masih menempel di dashboard; worker mengabaikannya karena `MAIL_PROVIDER=mailgun`.
 
 ---
 
