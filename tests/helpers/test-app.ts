@@ -8,10 +8,15 @@ import { authRoutes } from "../../src/routes/auth.routes";
 import { resourceRoutes } from "../../src/routes/resources.routes";
 import { bookingRoutes } from "../../src/routes/bookings.routes";
 import { AppError } from "../../src/utils/errors";
+import { buildCorsConfig } from "../../src/config/cors";
 
 export function buildApp() {
+  // Dibaca di dalam fungsi (bukan di level modul) supaya test boleh mengubah
+  // CORS_ALLOWED_ORIGINS sebelum memanggil buildApp(), persis seperti yang
+  // terjadi di src/server.ts.
+  const corsSetup = buildCorsConfig();
   const app = new Elysia()
-    .use(cors())
+    .use(cors(corsSetup.config))
 
     .onError(({ code, error, set }) => {
       if (error instanceof AppError) {

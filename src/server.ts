@@ -8,11 +8,13 @@ import { bookingRoutes } from "./routes/bookings.routes";
 import { paymentRoutes } from "./routes/payments.routes";
 import { AppError } from "./utils/errors";
 import { elysiaLogger } from "./utils/logger";
+import { buildCorsConfig, describeCorsAllowedOrigins } from "./config/cors";
 
 export function startServer() {
+  const corsSetup = buildCorsConfig();
   const app = new Elysia()
     .use(elysiaLogger)
-    .use(cors())
+    .use(cors(corsSetup.config))
     .use(
       openapi({
         documentation: {
@@ -81,6 +83,7 @@ export function startServer() {
   console.log(
     `🦊 Booking backend jalan di http://${app.server?.hostname}:${app.server?.port}`,
   );
+  console.log(`🌐 Origin CORS yang diizinkan: ${describeCorsAllowedOrigins()}`);
   return app;
 }
 

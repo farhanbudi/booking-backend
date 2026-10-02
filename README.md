@@ -115,6 +115,8 @@ src/
 │   ├── migrate.ts         # Runner migrasi
 │   ├── seed.ts            # Data awal
 │   └── migrations/        # File migrasi SQL (termasuk exclusion constraint)
+├── config/
+│   └── cors.ts             # Allowlist origin CORS dibaca dari env
 ├── middleware/
 │   └── auth.middleware.ts # JWT verification + role guard
 ├── modules/
@@ -283,6 +285,49 @@ Kartu tes di halaman Checkout: `4242 4242 4242 4242` (tanggal/CSV bebas). Tanpa 
 Kartu tes untuk gagal checkout: `4000 0000 0000 0002`
 
 > **Pitfall jumlah minimum (akun Stripe settlement = MYR):** akun Stripe yang dipakai memperlakukan IDR sebagai mata uang 2-desimal, sehingga `unit_amount` harus dikirim dalam satuan terkecil (Rp50.000 → `5000000`). Mengirim langsung (`50000`) gagal dengan `amount_too_small` karena Stripe membacanya sebagai Rp500,00 (di bawah minimum `RM2,00`). Logika pengalian ×100 ada di `src/modules/payments/pricing.ts`. Jika mengganti ke akun dengan settlement IDR, kembalikan perlakuan zero-decimal agar tidak terjadi overcharge 100×.
+
+---
+
+## CORS
+
+API hanya merespons browser untuk origin yang terdaftar di allowlist. Daftar ini dibaca dari env `CORS_ALLOWED_ORIGINS` — daftar origin dipisah koma, tanpa spasi setelah koma dan tanpa garis miring di akhir:
+
+```env
+CORS_ALLOWED_ORIGINS=https://booking.example.com,https://admin.example.com
+```
+
+| Env | Perilaku |
+|---|---|
+| Terisi | Hanya origin yang tertulis persis yang menerima header `Access-Control-Allow-Origin` |
+| Kosong | Fallback ke `http://localhost:3000`, `http://localhost:5173`, `http://localhost:4173` supaya development lokal jalan tanpa setup |
+
+Detail perilaku:
+
+- Pencocokan bersifat **persis** (string comparison). `https://app.example.com.evil.com` tidak lolos untuk allowlist `https://app.example.com`.
+- Origin yang tidak terdaftar tetap boleh buka respons, tapi **tanpa** header `Access-Control-Allow-Origin` — browser yang memblokir. Request tanpa header `Origin` (`curl`, panggilan server-ke-server) tetap dilayani normal.
+- Method dan header dibatasi eksplisit: `GET, POST, PUT, PATCH, DELETE, OPTIONS` dan header `Accept, Authorization, Content-Type`.
+- `Access-Control-Allow-Credentials` tidak pernah dikirim. Autentikasi memakai Bearer token di header dan refresh token di body request, bukan cookie.
+
+> **Wajib diisi sebelum deploy production.** Kalau env dibiarkan kosong di production, hanya origin localhost yang diizinkan sehingga frontend production mendapat CORS error total. Ini bukan lubang keamanan, tapi gejalanya baru terlihat dari browser. Karena itu daftar origin yang aktif ikut dicetak di log startup:
+
+> ```
+> 🌐 Origin CORS yang diizinkan: https://booking.example.com [sumber: CORS_ALLOWED_ORIGINS]
+> ```
+
+> Kalau baris itu berbunyi `[sumber: fallback localhost (CORS_ALLOWED_ORIGINS kosong)]` di production, deployment belum benar.
+
+> Catatan Render: `render.yaml` mendeklarasikan `CORS_ALLOWED_ORIGINS` sebagai `sync: false`, jadi nilainya bisa diisi dari dashboard saat blueprint dibuat.
+
+Verifikasi manual:
+
+```bash
+curl -i -H "Origin: https://booking.example.com" http://localhost:3000/          # ada Access-Control-Allow-Origin
+curl -i -H "Origin: https://penyerang.example.com" http://localhost:3000/        # tidak ada header allow
+curl -i -X OPTIONS -H "Origin: https://booking.example.com" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: authorization,content-type" \
+  http://localhost:3000/resources                                               # 204 + Access-Control-Allow-Methods
+```
 
 ---
 

@@ -45,6 +45,12 @@ services:
       - key: JWT_SECRET
         sync: false
 
+      # Origin frontend yang boleh memanggil API dari browser (daftar dipisah koma).
+      # Wajib diisi di production — kosong berarti hanya localhost yang diizinkan
+      # sehingga frontend production mendapat CORS error total.
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+
       - key: MAIL_PROVIDER
         value: mailgun
       - key: MAILGUN_SMTP_HOST
