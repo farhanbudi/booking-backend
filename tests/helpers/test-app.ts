@@ -7,6 +7,7 @@ import { cors } from "@elysiajs/cors";
 import { authRoutes } from "../../src/routes/auth.routes";
 import { resourceRoutes } from "../../src/routes/resources.routes";
 import { bookingRoutes } from "../../src/routes/bookings.routes";
+import { paymentRoutes } from "../../src/routes/payments.routes";
 import { AppError } from "../../src/utils/errors";
 import { buildCorsConfig } from "../../src/config/cors";
 
@@ -43,7 +44,11 @@ export function buildApp() {
 
     .use(authRoutes)
     .use(resourceRoutes)
-    .use(bookingRoutes);
+    .use(bookingRoutes)
+    // `paymentRoutes` di-mount dengan urutan yang sama seperti src/server.ts supaya
+    // test juga menangkap regresi: route publik yang didaftarkan SETELAH plugin
+    // auth tidak boleh ikut mewajibkan Bearer token.
+    .use(paymentRoutes);
 
   return app;
 }

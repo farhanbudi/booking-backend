@@ -42,9 +42,14 @@ export function requireAdmin(user: JwtPayload) {
   }
 }
 
+// PENTING: resolve HARUS `as: "scoped"`. Dengan `as: "global"` resolve ini
+// merambat ke parent, sehingga route publik yang didaftarkan di root app
+// SETELAH instance ber-`use(requireAuth)` ikut mewajibkan Bearer token — termasuk
+// `POST /payments/webhook` yang harus tetap terbuka untuk Stripe (aman lewat
+// verifikasi signature `whsec_`, bukan token).
 export const requireAuth = new Elysia({ name: "require-auth" })
   .use(authPlugin)
-  .resolve({ as: "global" }, async ({ getUser }) => {
+  .resolve({ as: "scoped" }, async ({ getUser }) => {
     const payload = await getUser();
     return { currentUser: payload };
   });
