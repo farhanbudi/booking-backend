@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+# Satu eksekusi per kombinasi workflow+ref. Untuk PR, push baru ke branch yang
+# sama membatalkan eksekusi lama supaya PR tidak menunggu dua run paralel.
+# Untuk push ke `main` pembatalan DIMATIKAN: semua commit di `main` berbagi ref
+# (`refs/heads/main`), jadi membatalkan run lama akan membuat commit sebelumnya
+# tidak pernah mendapat hasil sukses. `cancel-in-progress: true` tanpa
+# syarat akan tinggalkan commit itu dengan status `cancelled` — dan job
+# `ci-success` mengevaluasi `cancelled` sebagai gagal.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    name: Backend (typecheck + test)
+    runs-on: ubuntu-latest
+
+    # Batas keras per job. Tanpa ini GitHub memakai default 360 menit. Run normal
+    # selesai 2-4 menit; 30 menit masih muat untuk kasus terburuk di mana banyak
+    # test kena timeout 30 detik (`bun test --timeout=30000`) bergantian.
+    # Perlunya juga untuk proses yang test-nya sudah hijau tapi tidak pernah exit:
+    # koneksi ioredis/BullMQ yang masih retry menahan event loop (`maxRetriesPerRequest: null`).
+    timeout-minutes: 30
+
+    # Test suite memakai PostgreSQL sungguhan, bukan mock: exclusion constraint
+    # `no_overlapping_bookings` dan test race condition hanya berarti sesuatu kalau
+    # benar-benar dieksekusi terhadap database asli.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: booking_test
+        ports:
+          - "5432:5432"
+        # Healthcheck membuat Actions menunggu sampai database siap, tanpa polling loop.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      # Redis wajib ada, bukan opsional: `src/queue.ts` membuka ioredis dengan
+      # `maxRetriesPerRequest: null`, jadi `bookingEmailQueue.add()` tidak pernah
+      # reject kalau Redis mati — hanya menggantung. Test yang memanggil
+      # POST /bookings dan cancel lewat service asli (tests/unit/bookings.service,
+      # tests/api/bookings.api, tests/api/rate-limit.api, tests/concurrency,
+      # tests/api/payments-webhook.api) lalu timeout 30 detik, bukan gagal cepat.
+      redis:
+        image: redis:7
+        ports:
+          - "6379:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    # Catatan: env job sengaja TIDAK didefinisikan di sini. Semua konfigurasi
+    # dituangkan langsung ke berkas `.env.test` pada langkah "Tulis .env.test",
+    # sehingga hanya ada satu sumber kebenaran.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        # Minor pin: kunci major+minor (lokal 1.3.14) tapi tetap dapat patch baru
+        # otomatis. Tanpa pin, CI bisa_major berbeda dari `bun.lock` dan
+        # `bun install --frozen-lockfile` gagal. Naikkan minor ini manual saat
+        # Bun lokal naik.
+        with:
+          bun-version: 1.3.x
+
+      - name: Install dependency
+        run: bun install --frozen-lockfile
+
+      # `tests/setup.ts` (preload) memanggil loadTestEnvFile() yang melempar error
+      # kalau berkas .env.test tidak ada, dan isinya MENIMPA process.env. Karena itu
+      # env harus ditulis langsung ke .env.test — bukan hanya bergantung pada env job.
+      # Semua nilai di bawah adalah nilai dummy dan sengaja ditulis terbuka di dalam workflow.
+      # Jangan pernah memindahkan nilai produksi ke sini.
+      # 127.0.0.1 (bukan localhost) menghindari ketergantungan pada resolusi IPv6 di runner Linux.
+      # Nama database mengandung "test" karena assertTestDatabaseUrl() mewajibkannya.
+      - name: Tulis .env.test
+        run: |
+          cat > .env.test <<'EOF'
+          NODE_ENV=test
+          DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/booking_test
+          JWT_SECRET=ci-dummy-jwt-secret-bukan-rahasia
+          PORT=3001
+          RUN_MODE=all
+          CORS_ALLOWED_ORIGINS=http://localhost:5173
+          REDIS_URL=redis://127.0.0.1:6379/15
+          MAIL_PROVIDER=smtp
+          MAIL_FROM=no-reply@example.com
+          SMTP_HOST=localhost
+          SMTP_PORT=1025
+          STRIPE_SECRET_KEY=sk_test_ci_dummy_key
+          STRIPE_WEBHOOK_SECRET=whsec_ci_dummy_secret
+          PAYMENT_CURRENCY=idr
+          ACCESS_TOKEN_TTL_MINUTES=15
+          REFRESH_TOKEN_TTL_DAYS=30
+          EOF
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun run test
+
+  # Satu-satunya status check yang direkomendasikan untuk branch protection `main`.
+  # Job ini TIDAK memakai `container:` supaya tidak menarik image postgres kedua
+  # hanya untuk satu baris pemeriksaan.
+  ci-success:
+    name: CI Success
+    if: always()
+    needs:
+      - backend
+    runs-on: ubuntu-latest
+    steps:
+      # `if: always()` wajib (bukan `success()`), kalau tidak job ini akan ter-skip
+      # saat job `backend` gagal — dan status check yang ter-skip akan menggantung PR.
+      - name: Pastikan semua job wajib sukses
+        run: |
+          if [ "${{ needs.backend.result }}" != "success" ]; then
+            echo "Job backend selesai dengan hasil: ${{ needs.backend.result }}"
+            exit 1
+          fi
+          echo "Semua job CI sukses."

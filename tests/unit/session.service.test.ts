@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import { createSession, validateSession, revokeSession } from "../../src/modules/auth/session.service";
+import { resetDb } from "../helpers/test-db";
 import { db } from "../../src/db/client";
 import { sessions, users } from "../../src/db/schema";
 import { eq } from "drizzle-orm";
@@ -18,7 +19,9 @@ async function expectUnauthorized(fn: () => Promise<unknown>) {
 }
 
 beforeAll(async () => {
-  await db.delete(sessions);
+  // resetDb() menjalankan migrate + truncate, jadi file ini aman dijalankan
+  // terhadap database kosong (mis. jadi file test pertama di CI).
+  await resetDb();
   await db.delete(users).where(eq(users.id, TEST_USER_ID));
   await db.insert(users).values({
     id: TEST_USER_ID,
