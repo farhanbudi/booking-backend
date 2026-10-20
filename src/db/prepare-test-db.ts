@@ -7,9 +7,21 @@ import { sql } from "drizzle-orm";
 import postgres from "postgres";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { resolve } from "node:path";
-import { db } from "./client";
+import { client, db } from "./client";
 
 const MIGRATIONS_FOLDER = resolve(import.meta.dir, "migrations");
+
+// Kunci advisory untuk menyerialisasi migrasi antar proses (mis. dua `bun test`
+// bersamaan di database test yang sama). Nilainya bebas, yang penting konstan.
+const MIGRATION_LOCK_ID = 728441001;
+
+// Menyimpan promise migrasi yang sedang berjalan di `globalThis`, bukan di
+// modul ini. Alasannya: `bun test` bisa memuat modul ini lebih dari sekali
+// (preload `tests/setup.ts` dan import dari file test), dan dua instance itu
+// akan menjalankan `migrate()` bersamaan -> bentrok "duplicate key value
+// violates unique constraint pg_class_relname_nsp_index" saat membuat tabel
+// `__drizzle_migrations`.
+const PREPARE_KEY = "__bookingBackendPrepareDatabase";
 
 function urlToOptions(url: URL): postgres.Options<{}> {
   return {
@@ -41,45 +53,73 @@ export async function createTestDatabase(): Promise<void> {
 
 // Jalankan migrate + pastikan exclusion constraint ada (idempoten).
 // Wajib dipanggil sekali sebelum proses apa pun yang butuh database test.
-export async function prepareDatabase(): Promise<void> {
-  await createTestDatabase();
+//
+// Aman dipanggil berulang kali dan dari banyak pemanggil sekaligus:
+// - dalam satu proses, semua pemanggil menerima promise yang sama (lihat PREPARE_KEY);
+// - antar proses, migrasi diserialisasi dengan advisory lock PostgreSQL.
+export function prepareDatabase(): Promise<void> {
+  const store = globalThis as unknown as Record<string, Promise<void> | undefined>;
 
-  // Kalau database baru dibuat, migrate juga perlu menjalankan ekstensi.
-  await db.execute(sql`CREATE EXTENSION IF NOT EXISTS btree_gist`);
-
-  // Guard eksplisit: kalau extension gagal dibuat (mis. postgresql-contrib
-  // tidak terinstall), beri error yang jelas alih-alih gagal saat ADD CONSTRAINT.
-  const ext = await db.execute<{ installed: boolean }>(sql`
-    SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'btree_gist') AS installed
-  `);
-  if (!ext[0]?.installed) {
-    throw new Error(
-      "Gagal mengaktifkan extension 'btree_gist' yang dibutuhkan constraint " +
-        "no_overlapping_bookings. Pastikan paket 'postgresql-contrib' terinstall " +
-        "pada server PostgreSQL (mis. `apt install postgresql-contrib` / `brew install " +
-        "postgresql` versi lengkap), lalu jalankan ulang."
-    );
+  if (!store[PREPARE_KEY]) {
+    store[PREPARE_KEY] = runPrepareDatabase().catch((error) => {
+      // Jangan menyimpan kegagalan: pemanggilan berikutnya harus bisa mencoba lagi.
+      delete store[PREPARE_KEY];
+      throw error;
+    });
   }
 
-  await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+  return store[PREPARE_KEY];
+}
 
-  // Exclusion constraint manual (tidak ada di migrate Drizzle). PostgreSQL tidak
-  // mendukung `ADD CONSTRAINT IF NOT EXISTS`, jadi dicek via pg_constraint dulu.
-  const exists = await db.execute<{ found: boolean }>(sql`
-    SELECT EXISTS(
-      SELECT 1 FROM pg_constraint WHERE conname = 'no_overlapping_bookings'
-    ) AS found
-  `);
-  if (!exists[0]?.found) {
-    await db.execute(sql`
-      ALTER TABLE bookings
-        ADD CONSTRAINT no_overlapping_bookings
-        EXCLUDE USING gist (
-          resource_id WITH =,
-          tstzrange(start_time, end_time) WITH &&
-        )
-        WHERE (status <> 'cancelled')
+async function runPrepareDatabase(): Promise<void> {
+  await createTestDatabase();
+
+  // Kunci advisory: session khusus (reserved) supaya lock dipegang koneksi
+  // yang sama dari awal sampai akhir, dan dilepas di finally.
+  const reserved = await client.reserve();
+  try {
+    await reserved`SELECT pg_advisory_lock(${MIGRATION_LOCK_ID})`;
+
+    // Kalau database baru dibuat, migrate juga perlu menjalankan ekstensi.
+    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS btree_gist`);
+
+    // Guard eksplisit: kalau extension gagal dibuat (mis. postgresql-contrib
+    // tidak terinstall), beri error yang jelas alih-alih gagal saat ADD CONSTRAINT.
+    const ext = await db.execute<{ installed: boolean }>(sql`
+      SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'btree_gist') AS installed
     `);
+    if (!ext[0]?.installed) {
+      throw new Error(
+        "Gagal mengaktifkan extension 'btree_gist' yang dibutuhkan constraint " +
+          "no_overlapping_bookings. Pastikan paket 'postgresql-contrib' terinstall " +
+          "pada server PostgreSQL (mis. `apt install postgresql-contrib` / `brew install " +
+          "postgresql` versi lengkap), lalu jalankan ulang."
+      );
+    }
+
+    await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+
+    // Exclusion constraint manual (tidak ada di migrate Drizzle). PostgreSQL tidak
+    // mendukung `ADD CONSTRAINT IF NOT EXISTS`, jadi dicek via pg_constraint dulu.
+    const exists = await db.execute<{ found: boolean }>(sql`
+      SELECT EXISTS(
+        SELECT 1 FROM pg_constraint WHERE conname = 'no_overlapping_bookings'
+      ) AS found
+    `);
+    if (!exists[0]?.found) {
+      await db.execute(sql`
+        ALTER TABLE bookings
+          ADD CONSTRAINT no_overlapping_bookings
+          EXCLUDE USING gist (
+            resource_id WITH =,
+            tstzrange(start_time, end_time) WITH &&
+          )
+          WHERE (status <> 'cancelled')
+      `);
+    }
+  } finally {
+    await reserved`SELECT pg_advisory_unlock(${MIGRATION_LOCK_ID})`;
+    reserved.release();
   }
 }
 

@@ -8,6 +8,13 @@
 // `bun test` dan menjamin `.env.test` selalu menimpa nilai dari `.env`.
 
 import { loadTestEnvFile, assertTestDatabaseUrl } from "../src/utils/test-env";
+import { prepareDatabase } from "../src/db/prepare-test-db";
 
 loadTestEnvFile();
 assertTestDatabaseUrl();
+
+// Pastikan skema sudah ada (migrate + exclusion constraint) SEBELUM file test
+// pertama dijalankan. Tanpa ini, file test yang tidak memanggil resetDb() sendiri
+// akan gagal di database kosong: di CI database selalu baru dibuat, jadi tabel
+// `sessions` (dan tabel lain) belum ada saat `delete from "sessions"` dijalankan.
+await prepareDatabase();

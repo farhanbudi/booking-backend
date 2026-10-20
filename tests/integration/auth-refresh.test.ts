@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach } from "bun:test";
 import { buildApp, requestJson } from "../helpers/test-app";
+import { resetDb } from "../helpers/test-db";
 import { db } from "../../src/db/client";
 import { users, sessions } from "../../src/db/schema";
 import { eq } from "drizzle-orm";
@@ -15,7 +16,9 @@ const TEST_USER_ID = "22222222-2222-2222-2222-222222222222";
 let app: ReturnType<typeof buildApp>;
 
 beforeAll(async () => {
-  await db.delete(sessions);
+  // resetDb() menjalankan migrate + truncate, jadi file ini aman dijalankan
+  // sebagai file test PERTAMA terhadap database kosong (mis. di CI).
+  await resetDb();
   await db.delete(users).where(eq(users.id, TEST_USER_ID));
   await db.insert(users).values({
     id: TEST_USER_ID,
